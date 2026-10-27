@@ -79,6 +79,72 @@ h1,h2,h3{letter-spacing:-.036em}
 /* Viewport-aware scroll reveals: light, smooth, and mobile friendly */
 @media(prefers-reduced-motion:no-preference){html.scroll-reveal-ready .view.active .reveal{animation:none;opacity:0;transform:translate3d(0,20px,0);transition:opacity .72s cubic-bezier(.2,.75,.2,1),transform .72s cubic-bezier(.2,.75,.2,1);transition-delay:0s}html.scroll-reveal-ready .view.active .reveal.in-view{opacity:1;transform:translate3d(0,0,0)}html.scroll-reveal-ready .view.active .reveal.in-view.delay1{transition-delay:.07s}html.scroll-reveal-ready .view.active .reveal.in-view.delay2{transition-delay:.13s}html.scroll-reveal-ready .view.active .reveal.in-view.delay3{transition-delay:.19s}}
 @media(max-width:600px) and (prefers-reduced-motion:no-preference){html.scroll-reveal-ready .view.active .reveal{transform:translate3d(0,14px,0);transition-duration:.62s}html.scroll-reveal-ready .view.active .reveal.in-view{transform:translate3d(0,0,0)}}
+
+/* Editorial design direction: remove box-heavy visual treatment */
+:root{--paper:#fff;--line:#edf0f1;--ink:#22262c;--slate:#737980}
+body{background:#fff}
+.shell{width:min(1190px,calc(100% - 72px))}
+.site-header{border-bottom:1px solid #e9ebed;box-shadow:none}
+.header-inner{height:82px}
+.desktop-nav a:not(.btn){font-weight:600}
+.desktop-nav .btn{border-radius:100px;padding-inline:22px}
+.hero{padding:40px 0 18px;background:white}
+.hero-inner{width:min(1240px,calc(100% - 72px));grid-template-columns:.88fr 1.12fr;gap:40px;min-height:540px;align-items:center}
+.hero-copy{padding:40px 0 45px;max-width:560px}
+.hero h1{font-size:clamp(48px,5vw,75px);font-weight:750;letter-spacing:-.065em;line-height:1.13}
+.hero p{max-width:440px;font-size:16px;line-height:1.85}
+.hero-inner:after{grid-column:2;grid-row:1;min-height:540px;border-radius:9px 85px 9px 9px;background-position:center center;box-shadow:0 28px 75px #17202a10}
+.hero-bottom{background:white;border-top:0}
+.hero-bottom .shell{border-top:1px solid #eceeef;padding:17px 0}
+.btn{border-radius:100px;padding-inline:23px}
+.hero .btn.line{border-color:#d9dce0}
+.home-intro{padding:100px 0 110px}
+.home-intro-inner{grid-template-columns:.95fr 1fr;gap:100px}
+.home-intro h2{font-size:clamp(38px,4vw,58px);line-height:1.16}
+.home-intro-copy{padding-top:28px}
+.home-intro-copy p{font-size:17px;line-height:1.9}
+.home-strip{background:#fff;border:0;padding-bottom:110px}
+.home-strip-inner{grid-template-columns:repeat(3,1fr);gap:60px}
+.strip-item,.strip-item:not(:first-child){border:0;padding:25px 0 0;position:relative}
+.strip-item:before{content:'';position:absolute;top:0;left:0;width:34px;height:2px;background:var(--red)}
+.strip-item h3{font-size:22px;letter-spacing:-.035em;margin:17px 0 9px}
+.strip-item p{font-size:14px;line-height:1.8;max-width:280px}
+.strip-item span{font-size:11px;color:#9a4d52}
+.page-hero{background:#fff;border-bottom:0;padding:100px 0 60px}
+.page-hero .shell{padding-bottom:45px;border-bottom:1px solid #e9ecee}
+.page-hero h1{font-size:clamp(49px,6vw,82px);line-height:1.08;letter-spacing:-.065em}
+.page-hero p{font-size:17px;line-height:1.8}
+.section{padding:85px 0 115px}
+.section-heading{margin-bottom:58px}
+.section-heading h2{font-size:clamp(38px,4.4vw,58px)}
+.split{gap:110px}
+.split p{line-height:1.95}
+.logo-stage{min-height:430px;background:#f7f7f7;border-radius:7px 75px 7px 7px}
+.logo-stage:before{opacity:.12}
+.portfolio{display:grid;grid-template-columns:1.06fr .94fr;gap:65px;align-items:center;min-height:0;background:transparent;border:0;box-shadow:none}
+.portfolio-media{min-height:470px;border-radius:8px 75px 8px 8px;overflow:hidden}
+.portfolio-body{padding:35px 0}
+.portfolio h2{font-size:clamp(39px,4vw,57px)}
+.portfolio p{line-height:1.9}
+.status{background:transparent;border-left:2px solid var(--red);padding:2px 0 2px 12px}
+.index-line{margin-top:55px}
+.focus-list{border-top:0}
+.focus-item{grid-template-columns:65px 1fr 1.1fr;gap:45px;padding:40px 0;border-bottom:1px solid #e9ecee}
+.focus-item:first-child{border-top:1px solid #e9ecee}
+.focus-item:hover{padding-left:0;background:transparent}
+.focus-item h3{font-size:clamp(27px,3vw,41px)}
+.focus-item p{font-size:15px;line-height:1.9}
+.principles{gap:75px 110px}
+.principle{border-top:0;padding-top:25px;position:relative}
+.principle:before{content:'';position:absolute;top:0;left:0;width:34px;height:2px;background:var(--red)}
+.principle h3{font-size:29px}
+.principle p{line-height:1.9}
+.community-panel{background:#a3262b}
+.community-panel .shell{padding-block:15px}
+.footer-top{gap:60px}
+@media(max-width:1040px){.hero-inner{gap:24px}.split{gap:55px}.portfolio{gap:35px}.home-intro-inner{gap:55px}.home-strip-inner{gap:35px}}
+@media(max-width:850px){.shell{width:calc(100% - 48px)}.header-inner{height:76px}.hero{padding:20px 0 0}.hero-inner{width:calc(100% - 48px);grid-template-columns:1fr;gap:0}.hero-inner:after{grid-row:1;grid-column:1;min-height:360px;border-radius:7px 55px 7px 7px}.hero-copy{grid-row:2;grid-column:1;padding:42px 0 35px}.hero h1{font-size:clamp(44px,7vw,63px)}.home-intro{padding:70px 0}.home-intro-inner{gap:20px}.home-strip{padding-bottom:75px}.home-strip-inner{gap:25px}.page-hero{padding:70px 0 25px}.page-hero .shell{padding-bottom:35px}.section{padding:65px 0 85px}.portfolio{grid-template-columns:1fr;gap:15px}.portfolio-media{min-height:370px}.portfolio-body{padding:30px 0}.logo-stage{min-height:320px}.focus-item{gap:18px}.principles{gap:45px}}
+@media(max-width:560px){.shell{width:calc(100% - 36px)}.header-inner{height:66px}.hero{padding-top:14px}.hero-inner{width:calc(100% - 36px)}.hero-inner:after{min-height:245px;max-height:280px;border-radius:6px 42px 6px 6px}.hero-copy{padding:32px 2px 26px}.hero h1{font-size:clamp(38px,10vw,50px);margin:15px 0}.hero p{font-size:14px;line-height:1.8}.hero-bottom .shell{padding:12px 0}.home-intro{padding:58px 0 48px}.home-intro h2{font-size:38px}.home-intro-copy{padding-top:0}.home-intro-copy p{font-size:15px}.home-strip{padding-bottom:58px}.home-strip-inner{grid-template-columns:1fr;gap:0}.strip-item,.strip-item:not(:first-child){padding:22px 0 24px;border-bottom:1px solid #f0f0f0}.strip-item:before{top:18px;width:25px}.strip-item span{display:block;padding-left:37px}.strip-item h3{font-size:20px;margin:10px 0 6px}.strip-item p{font-size:14px}.page-hero{padding:53px 0 10px}.page-hero h1{font-size:clamp(42px,11vw,59px)}.page-hero p{font-size:15px}.section{padding:54px 0 75px}.section-heading{margin-bottom:35px}.section-heading h2{font-size:39px}.split{gap:35px}.logo-stage{min-height:260px;border-radius:5px 42px 5px 5px}.portfolio-media{min-height:255px;border-radius:5px 42px 5px 5px}.portfolio-body{padding:24px 0}.portfolio h2{font-size:39px}.focus-item{grid-template-columns:35px 1fr;gap:10px;padding:29px 0}.focus-item p{grid-column:2;font-size:14px}.focus-item h3{font-size:25px}.principles{gap:28px}.principle h3{font-size:25px}}
 </style></head><body><div class="intro-loader" id="intro-loader" role="status" aria-label="Loading Altaş Holdings" aria-live="polite"><div class="intro-loader-inner"><div class="intro-mark"><img src="/assets/atlas-logo.svg" alt=""></div><div class="intro-name">Altaş Holdings</div><div class="intro-subtitle">LIMITED · AVIATION GROUP</div><div class="intro-rule" aria-hidden="true"></div></div></div>
 
 <header class="site-header"><div class="shell header-inner"><a class="wordmark" href="#/home" aria-label="Altaş Holdings home"><img src="/assets/atlas-logo.svg" alt="Altaş Holdings emblem"><span><strong>Altaş Holdings</strong><small>LIMITED</small></span></a><nav class="desktop-nav" aria-label="Main navigation"><a href="#/home">Home</a><a href="#/about">About</a><a href="#/group">Our Group</a><a href="#/services">What We Do</a><a href="#/approach">Our Approach</a><a class="btn" href="https://discord.gg/x4BvvNmuZW" target="_blank" rel="noopener noreferrer">Our Community <span class="arrow">↗</span></a></nav><button class="menu-toggle" id="menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="mobile-panel" aria-expanded="false"><span class="hamburger" aria-hidden="true"><i></i><i></i><i></i></span></button></div><nav class="mobile-panel" id="mobile-panel" aria-label="Mobile navigation" aria-hidden="true"><div class="menu-heading">Explore Altaş</div><a href="#/home">Home <span>01</span></a><a href="#/about">About <span>02</span></a><a href="#/group">Our Group <span>03</span></a><a href="#/services">What We Do <span>04</span></a><a href="#/approach">Our Approach <span>05</span></a><a class="btn" href="https://discord.gg/x4BvvNmuZW" target="_blank" rel="noopener noreferrer">Join the Community <span class="arrow">↗</span></a></nav></header>
