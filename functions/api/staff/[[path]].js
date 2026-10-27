@@ -43,10 +43,11 @@ export async function onRequest({ request, env }) {
     if (!env.STAFF_DB) fail('The staff hub is awaiting Cloudflare database activation. Please contact the chairman.', 503);
     const db = env.STAFF_DB;
     const now = Date.now();
+    const setupHash = /^[a-f0-9]{64}$/.test(env.STAFF_SETUP_KEY_HASH || '') ? env.STAFF_SETUP_KEY_HASH : typeof env.STAFF_SETUP_KEY === 'string' && env.STAFF_SETUP_KEY.length >= 32 ? await digest(env.STAFF_SETUP_KEY) : null;
     const query = (sql, ...args) => db.prepare(sql).bind(...args);
     if (method === 'GET' && action === 'status') {
       const admin = await query("SELECT id FROM staff_users WHERE role='chairman'").first();
-      return response({ ready: true, setup: !admin && typeof env.STAFF_SETUP_KEY === 'string' && env.STAFF_SETUP_KEY.length >= 32 });
+      return response({ ready: true, setup: !admin && !!setupHash });
     }
     let body = {};
     if (method === 'POST') {
@@ -70,7 +71,7 @@ export async function onRequest({ request, env }) {
     if (method === 'POST' && ['setup', 'login', 'accept-invite'].includes(action)) {
       await rate('auth', 25, 15);
       if (action === 'setup') {
-        if (typeof env.STAFF_SETUP_KEY !== 'string' || env.STAFF_SETUP_KEY.length < 32 || typeof body.setupKey !== 'string' || !same(await digest(body.setupKey), await digest(env.STAFF_SETUP_KEY))) fail('Setup is unavailable or the setup key is incorrect.', 403);
+        if (!setupHash || typeof body.setupKey !== 'string' || body.setupKey.length > 256 || !same(await digest(body.setupKey), setupHash)) fail('Setup is unavailable or the setup key is incorrect.', 403);
         if (await query("SELECT id FROM staff_users WHERE role='chairman'").first()) fail('The chairman account has already been created.', 409);
         const email = emailField(body.email), name = field(body.name, 2, 80, 'Name');
         const salt = random(), hash = await passwordHash(passField(body.password), salt), id = crypto.randomUUID();
