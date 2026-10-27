@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { onRequest } from '../functions/api/staff/[[path]].js';
 
 function database() {
@@ -32,6 +33,18 @@ function client(env, ip) {
     return { status: res.status, body: await res.json(), cookie: setCookie };
   };
 }
+
+test('hashed one-time setup keys cannot be used as bearer setup credentials', async () => {
+  const key = 'private-test-setup-key-at-least-32-characters';
+  const hash = createHash('sha256').update(key).digest('hex');
+  const call = client({ STAFF_DB: database(), STAFF_SETUP_KEY_HASH: hash }, '192.0.2.15');
+  const setup = { name: 'Chairman', email: 'chairman@example.com', password: 'long test password for chairman' };
+  assert.equal((await call('status')).body.setup, true);
+  assert.equal((await call('setup', { ...setup, setupKey: hash })).status, 403);
+  assert.equal((await call('setup', { ...setup, setupKey: key })).status, 201);
+  assert.equal((await call('status')).body.setup, false);
+  assert.equal((await call('setup', { ...setup, setupKey: key })).status, 409);
+});
 
 test('secure separate accounts, invitation lifecycle, access controls and session revocation', async () => {
   const env = { STAFF_DB: database(), STAFF_SETUP_KEY: 'test-only-private-setup-key-at-least-32-characters' };
