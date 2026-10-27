@@ -1,0 +1,29 @@
+name: Activate Holdings Staff Hub
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/activate-staff-hub.yml'
+      - 'scripts/activate-staff-hub.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: holdings-staff-infrastructure
+  cancel-in-progress: false
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify staff authentication and permissions
+        run: node --test tests/staff-auth.test.mjs
+      - name: Activate Altas database and production staff service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          STAFF_SETUP_KEY_HASH: 'bd8f797e19548beff06dfa8c9620baed9e933e0c2e61efaa6476431cf7e8aef4'
+        run: node scripts/activate-staff-hub.mjs
