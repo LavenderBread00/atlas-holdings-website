@@ -8,6 +8,7 @@ import { onRequest } from '../functions/api/staff/[[path]].js';
 function database() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../migrations/0001_staff.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0002_management.sql', import.meta.url), 'utf8'));
   const wrap = (sql, args = []) => ({
     bind: (...values) => wrap(sql, values),
     first: async () => sqlite.prepare(sql).get(...args) || null,
@@ -126,4 +127,74 @@ test('UI bindings and security headers remain consistent', () => {
   assert.equal(js.includes('innerHTML'), false, 'user text must use DOM text nodes');
   assert.equal(js.includes('localStorage'), false, 'no credentials in local storage');
   assert.match(readFileSync(new URL('../_headers', import.meta.url), 'utf8'), /frame-ancestors 'none'/);
+});
+
+test('ranks, delegated management, task privacy, audit history and live demotion', async () => {
+  const env = { STAFF_DB: database(), STAFF_SETUP_KEY: 'test-only-private-setup-key-at-least-32-characters' };
+  const chair = client(env,'192.0.2.40'), manager = client(env,'192.0.2.41'), staff = client(env,'192.0.2.42'), other=client(env,'192.0.2.43');
+  const owner=await chair('setup',{setupKey:env.STAFF_SETUP_KEY,name:'Owner',email:'owner@example.com',password:'six123'});
+  async function join(call,email) {
+    const invite=await chair('invite',{name:email.split('@')[0],email});
+    const token=new URLSearchParams(new URL(invite.body.link).hash.slice(1)).get('invite');
+    return (await call('accept-invite',{token,password:'six123',rank_id:'director',management:true})).body.user;
+  }
+  const boss=await join(manager,'manager@example.com'), worker=await join(staff,'staff@example.com'), colleague=await join(other,'other@example.com');
+  assert.equal(boss.management,false);
+  assert.equal((await staff('rank',{name:'Bad rank',management:true})).status,403);
+  assert.equal((await staff('directory')).status,403);
+  assert.equal((await chair('staff-profile',{id:owner.body.user.id,rank_id:'trainee'})).status,404);
+  assert.equal((await chair('staff-profile',{id:boss.id,rank_id:'missing'})).status,404);
+  assert.equal((await chair('staff-profile',{id:boss.id,rank_id:'manager',department:'Operations'})).status,200);
+  assert.equal((await manager('me')).body.user.management,true);
+  assert.equal((await manager('me')).body.user.department,'Operations');
+  assert.equal((await manager('directory')).body.staff.length,4);
+  for(const action of ['staff','activity'])assert.equal((await manager(action)).status,403);
+  for(const [action,data] of [['invite',{email:'x@example.com',name:'Someone'}],['staff-access',{id:worker.id,active:false}],['staff-profile',{id:worker.id,rank_id:'director'}],['rank',{name:'New Boss',management:true}],['revoke-invite',{email:'x@example.com'}]])assert.equal((await manager(action,data)).status,403);
+  assert.equal((await manager('announcement',{title:'Management update',body:'A test update for staff.'})).status,201);
+  assert.equal((await manager('resource',{title:'Handbook',url:'https://example.com/handbook'})).status,201);
+  const task={title:'Prepare group update',description:'Review the next group announcement.',assignee_id:worker.id,priority:'high',due_date:'2026-11-10'};
+  assert.equal((await staff('task',task)).status,403);
+  assert.equal((await manager('task',{...task,due_date:'2026-02-30'})).status,400);
+  assert.equal((await manager('task',{...task,assignee_id:'missing'})).status,400);
+  assert.equal((await manager('task',task)).status,201);
+  const assigned=(await staff('dashboard')).body.tasks;
+  assert.equal(assigned.length,1);assert.equal(assigned[0].title,task.title);
+  assert.equal((await other('dashboard')).body.tasks.length,0);
+  assert.equal((await other('task-status',{id:assigned[0].id,status:'done'})).status,403);
+  assert.equal((await staff('task-status',{id:assigned[0].id,status:'bad'})).status,400);
+  assert.equal((await staff('task-status',{id:assigned[0].id,status:'in_progress'})).status,200);
+  assert.equal((await manager('dashboard')).body.tasks[0].status,'in_progress');
+  assert.equal((await chair('rank',{name:'Development Lead',management:false})).status,200);
+  assert.equal((await chair('rank',{name:'Development Lead',management:false})).status,409);
+  assert.equal((await chair('rank',{name:'Chairman',management:true})).status,400);
+  assert.equal((await chair('rank',{id:'staff',name:'Holdings Staff',management:true})).status,400);
+  const lead=(await chair('directory')).body.ranks.find(r=>r.name==='Development Lead');
+  assert.equal((await chair('staff-profile',{id:worker.id,rank_id:lead.id,department:'Digital'})).status,200);
+  assert.equal((await staff('me')).body.user.rank,'Development Lead');
+  assert.equal((await chair('rank',{id:lead.id,name:'Digital Lead',management:true})).status,200);
+  assert.equal((await staff('me')).body.user.management,true);
+  assert.equal((await chair('rank',{id:lead.id,name:'Digital Lead',management:false})).status,200);
+  assert.equal((await staff('directory')).status,403);
+  assert.equal((await chair('staff-profile',{id:boss.id,rank_id:'trainee'})).status,200);
+  assert.equal((await manager('announcement',{title:'Blocked now',body:'Should not be published.'})).status,403);
+  const invitation=await chair('invite',{name:'Revoke Test',email:'revoke@example.com'});
+  assert.equal((await chair('revoke-invite',{email:'revoke@example.com'})).status,200);
+  const token=new URLSearchParams(new URL(invitation.body.link).hash.slice(1)).get('invite');
+  assert.equal((await other('accept-invite',{token,password:'six123'})).status,410);
+  const log=(await chair('activity')).body.activity;
+  assert(log.some(a=>a.action==='Rank updated'));
+  assert(log.some(a=>a.action==='Task assigned'));
+  assert(log.some(a=>a.action==='Invitation revoked'));
+  assert(log.every(a=>!JSON.stringify(a).includes(token)));
+  assert.equal((await chair('staff-access',{id:colleague.id,active:false})).status,200);
+  assert.equal((await other('me')).status,401);
+});
+
+test('management migration is additive and safe to re-run', () => {
+ const db=new DatabaseSync(':memory:');
+ db.exec(readFileSync(new URL('../migrations/0001_staff.sql',import.meta.url),'utf8'));
+ db.exec("INSERT INTO staff_users VALUES ('existing','existing@example.com','Existing','hash','salt','staff',1,0)");
+ const sql=readFileSync(new URL('../migrations/0002_management.sql',import.meta.url),'utf8');db.exec(sql);db.exec(sql);
+ assert.equal(db.prepare('SELECT count(*) AS n FROM staff_ranks').get().n,5);
+ assert.equal(db.prepare('SELECT password_hash FROM staff_users').get().password_hash,'hash');
 });

@@ -1,7 +1,9 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  let user = null, dashboard = null;
+  let user = null, dashboard = null, directory = null;
+  const isManager = () => user?.role === 'chairman' || user?.management === true;
+  const rankName = person => person.role === 'chairman' ? 'Chairman' : person.rank || 'Holdings Staff';
   const inviteToken = new URLSearchParams(location.hash.slice(1)).get('invite');
   if (inviteToken) history.replaceState(null, '', location.pathname);
   $('year').textContent = new Date().getFullYear();
@@ -38,20 +40,28 @@
   async function showWorkspace() {
     $('loading').hidden = true; $('auth').hidden = true; $('workspace').hidden = false;
     document.querySelectorAll('.chairman-only').forEach(el => { el.hidden = user.role !== 'chairman'; });
+    document.querySelectorAll('.management-only').forEach(el => { el.hidden = !isManager(); });
     const identity = $('identity'); identity.replaceChildren(element('strong', '', user.name), element('small', '', user.email));
-    $('role-badge').textContent = user.role === 'chairman' ? 'CHAIRMAN' : 'HOLDINGS STAFF';
+    $('role-badge').textContent = rankName(user).toUpperCase();
     $('greeting').textContent = 'Welcome, ' + user.name + '.';
-    $('account-summary').textContent = user.name + ' · ' + user.email;
+    $('account-summary').textContent = user.name + ' · ' + user.email + ' · ' + rankName(user) + (user.department ? ' · ' + user.department : '');
     switchTab('overview');
     await loadDashboard();
   }
   function switchTab(name) {
-    if (name === 'team' && user?.role !== 'chairman') return;
+    if (['team','ranks','activity'].includes(name) && user?.role !== 'chairman') return;
+    if (name === 'directory' && !isManager()) return;
     notice('');
+    $('workspace-menu').setAttribute('aria-expanded','false');
+    $('workspace-menu').parentElement.classList.remove('menu-open');
     document.querySelectorAll('.tab').forEach(el => { el.hidden = el.id !== 'tab-' + name; });
     document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.tab === name));
     if (name === 'team') loadStaff().catch(error => notice(error.message));
+    if (['directory','ranks'].includes(name) || (name === 'tasks' && isManager())) loadDirectory().catch(error => notice(error.message));
+    if (name === 'activity') loadActivity().catch(error => notice(error.message));
+    if (name === 'tasks') loadDashboard().catch(error => notice(error.message));
   }
+  $('workspace-menu').addEventListener('click',()=>{const open=$('workspace-menu').getAttribute('aria-expanded')!=='true';$('workspace-menu').setAttribute('aria-expanded',String(open));$('workspace-menu').parentElement.classList.toggle('menu-open',open);});
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => switchTab(button.dataset.tab)));
   function bindForm(id, callback) {
     $(id).addEventListener('submit', async event => {
@@ -87,11 +97,14 @@
   }
   async function loadDashboard() {
     dashboard = await api('dashboard');
+    renderTasks();
+    const stats = $('hub-stats'); stats.replaceChildren();
+    [['Open tasks',(dashboard.tasks || []).filter(t => t.status !== 'done').length],['Announcements',dashboard.announcements.length],['Shared resources',dashboard.resources.length]].forEach(([label,count]) => { const card=element('div','stat-card'); card.append(element('strong','',String(count)),element('span','',label)); stats.append(card); });
     const list = $('announcements-list'); list.replaceChildren();
     dashboard.announcements.forEach(item => {
       const card = element('article', 'announcement');
       card.append(element('h2', '', item.title), element('p', 'meta', item.author + ' · ' + date(item.created_at)), element('p', 'body', item.body));
-      if (user.role === 'chairman') card.append(deleteButton('announcement', item.id));
+      if (isManager()) card.append(deleteButton('announcement', item.id));
       list.append(card);
     });
     if (!dashboard.announcements.length) list.append(element('p', 'empty', 'No group announcements have been published yet.'));
@@ -99,7 +112,7 @@
     dashboard.resources.forEach(item => {
       const card = element('article', 'resource'), link = element('a', '', item.title + ' ↗');
       link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; card.append(link);
-      if (user.role === 'chairman') card.append(deleteButton('resource', item.id));
+      if (isManager()) card.append(deleteButton('resource', item.id));
       resources.append(card);
     });
     if (!dashboard.resources.length) resources.append(element('p', 'empty', 'Shared documents and links will appear here when added by the chairman.'));
@@ -132,9 +145,77 @@
       list.append(card);
     });
     const pending = $('pending-list'); pending.replaceChildren();
-    result.invites.forEach(item => { const card = element('article', 'person'), info = element('div'); info.append(element('h3', '', item.name), element('small', '', item.email), element('small', '', 'Expires ' + date(item.expires_at))); card.append(info); pending.append(card); });
+    result.invites.forEach(item => { const card = element('article', 'person'), info = element('div'); info.append(element('h3', '', item.name), element('small', '', item.email), element('small', '', 'Expires ' + date(item.expires_at))); card.append(info); const revoke=element('button','secondary','Revoke invitation'); revoke.type='button'; revoke.addEventListener('click',async()=>{if(!confirm('Revoke the invitation for '+item.name+'?'))return;revoke.disabled=true;try{await api('revoke-invite',{email:item.email});await loadStaff();notice('Invitation revoked.',true);}catch(error){notice(error.message);revoke.disabled=false;}});card.append(revoke);pending.append(card); });
     if (!result.invites.length) pending.append(element('p', 'empty', 'No pending invitations.'));
   }
+
+  function selectControl(labelText, options, value) {
+    const label=element('label','',labelText), select=element('select');
+    options.forEach(([id,name])=>{ const option=element('option','',name);option.value=id;select.append(option); });
+    select.value=value; label.append(select);return {label,select};
+  }
+  async function loadDirectory() {
+    directory=await api('directory'); renderDirectory(); renderRanks();
+    const select=$('task-assignee'), previous=select.value; select.replaceChildren(element('option','','Choose a staff member'));select.firstChild.value='';
+    directory.staff.filter(p=>p.active).forEach(p=>{const option=element('option','',p.name+' · '+rankName(p));option.value=p.id;select.append(option);});
+    if([...select.options].some(o=>o.value===previous))select.value=previous;
+  }
+  function renderDirectory() {
+    if(!directory)return;
+    const list=$('directory-list'), search=$('staff-search').value.trim().toLowerCase();list.replaceChildren();
+    const people=directory.staff.filter(p=>[p.name,p.email,rankName(p),p.department].join(' ').toLowerCase().includes(search));
+    people.forEach(person=>{
+      const card=element('article','panel directory-card'), info=element('div');
+      info.append(element('h2','',person.name),element('p','',person.email),element('span','tag',rankName(person)),element('p','meta',(person.department||'No department assigned')+' · '+(person.active?'Active':'Suspended')));card.append(info);
+      if(user.role==='chairman' && person.role!=='chairman') {
+        const form=element('form','profile-form'), row=element('div','fields');
+        const rank=selectControl('Rank',directory.ranks.map(r=>[r.id,r.name+(r.management?' · Management':'')]),person.rank_id);
+        const label=element('label','','Department'), department=element('input'); department.value=person.department;department.maxLength=80;label.append(department);row.append(rank.label,label);
+        const save=element('button','','Save assignment');save.type='submit';form.append(row,save);
+        form.addEventListener('submit',async event=>{event.preventDefault();const selected=directory.ranks.find(r=>r.id===rank.select.value);if(selected?.management && !person.management && !confirm('Give '+person.name+' management permissions? They will be able to publish content and assign tasks.'))return;save.disabled=true;try{await api('staff-profile',{id:person.id,rank_id:rank.select.value,department:department.value});await loadDirectory();notice('Staff assignment saved.',true);}catch(error){notice(error.message);save.disabled=false;}});card.append(form);
+      }
+      list.append(card);
+    });
+    if(!people.length)list.append(element('p','empty','No staff match your search.'));
+  }
+  function renderRanks() {
+    if(!directory || user.role!=='chairman')return;
+    const list=$('ranks-list');list.replaceChildren();
+    const chairman=element('article','panel');chairman.append(element('h2','','Chairman'),element('p','','Owner rank · protected · full control'));list.append(chairman);
+    directory.ranks.forEach(rank=>{
+      const form=element('form','panel'), title=element('h2','',rank.name), label=element('label','','Rank name'), name=element('input');name.value=rank.name;name.required=true;name.minLength=2;name.maxLength=60;label.append(name);
+      const permission=selectControl('Portal permissions',[['false','Standard staff'],['true','Management']],String(!!rank.management));
+      if(rank.id==='staff')permission.select.disabled=true;
+      const count=directory.staff.filter(p=>p.role!=='chairman' && p.rank_id===rank.id).length;
+      const save=element('button','','Save rank');save.type='submit';form.append(title,element('p','meta',count+' staff assigned'+(rank.id==='staff'?' · default rank':'')),label,permission.label,save);
+      form.addEventListener('submit',async event=>{event.preventDefault();const management=permission.select.value==='true';if(management!==!!rank.management && !confirm('Change permissions for '+rank.name+'? This applies immediately to all '+count+' staff assigned to this rank.'))return;save.disabled=true;try{await api('rank',{id:rank.id,name:name.value,management});await loadDirectory();notice('Rank updated.',true);}catch(error){notice(error.message);save.disabled=false;}});list.append(form);
+    });
+  }
+  function renderTasks() {
+    const list=$('tasks-list'), filter=$('task-filter').value;list.replaceChildren();
+    const tasks=(dashboard?.tasks||[]).filter(t=>filter==='all'||(filter==='done'?t.status==='done':t.status!=='done'));
+    tasks.forEach(task=>{
+      const card=element('article','panel task-card');const today=new Date().toLocaleDateString('en-CA');
+      card.append(element('span','tag',task.priority==='high'?'HIGH PRIORITY':'TASK'),element('h2','',task.title),element('p','task-description',task.description));
+      const due=task.due_date?new Date(task.due_date+'T12:00:00').toLocaleDateString(undefined,{dateStyle:'medium'}):'No due date';
+      card.append(element('p',task.due_date && task.due_date<today && task.status!=='done'?'overdue':'meta',task.assignee+' · '+due+(task.due_date && task.due_date<today && task.status!=='done'?' · Overdue':'')));
+      const status=selectControl('Progress',[['todo','To do'],['in_progress','In progress'],['done','Completed']],task.status); const save=element('button','secondary','Update progress');save.type='button';
+      save.addEventListener('click',async()=>{save.disabled=true;try{await api('task-status',{id:task.id,status:status.select.value});await loadDashboard();notice('Task progress updated.',true);}catch(error){notice(error.message);save.disabled=false;}});card.append(status.label,save);list.append(card);
+    });
+    if(!tasks.length)list.append(element('p','empty',filter==='done'?'No completed tasks yet.':'No tasks to show.'));
+  }
+  async function loadActivity() {
+    const result=await api('activity'), list=$('activity-list');list.replaceChildren();
+    result.activity.forEach(item=>{const card=element('article','panel activity-card');card.append(element('h3','',item.action),element('p','',item.detail),element('p','meta',item.actor+' · '+date(item.created_at)));list.append(card);});
+    if(!result.activity.length)list.append(element('p','empty','Management changes will appear here.'));
+  }
+  $('staff-search').addEventListener('input',renderDirectory);
+  $('task-filter').addEventListener('change',renderTasks);
+  $('refresh-tasks').addEventListener('click',()=>loadDashboard().catch(e=>notice(e.message)));
+  $('refresh-activity').addEventListener('click',()=>loadActivity().catch(e=>notice(e.message)));
+  bindForm('rank-form',async(values,form)=>{await api('rank',{name:values.name,management:values.management==='true'});form.reset();await loadDirectory();notice('Rank created. Assign it in the staff directory.',true);});
+  bindForm('task-form',async(values,form)=>{await api('task',values);form.reset();await loadDashboard();notice('Task assigned.',true);});
+
   async function init() {
     try {
       const status = await api('status');

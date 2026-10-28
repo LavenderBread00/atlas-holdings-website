@@ -31,7 +31,7 @@ const passField = value => {
   if (typeof value !== 'string' || value.length < 6 || value.length > 128) fail('Use a password between 6 and 128 characters.');
   return value;
 };
-const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role });
+const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, rank: user.role === 'chairman' ? 'Chairman' : (user.rank || 'Holdings Staff'), department: user.department || '', management: user.role === 'chairman' || !!user.management });
 
 export async function onRequest({ request, env }) {
   try {
@@ -45,6 +45,12 @@ export async function onRequest({ request, env }) {
     const now = Date.now();
     const setupHash = /^[a-f0-9]{64}$/.test(env.STAFF_SETUP_KEY_HASH || '') ? env.STAFF_SETUP_KEY_HASH : typeof env.STAFF_SETUP_KEY === 'string' && env.STAFF_SETUP_KEY.length >= 32 ? await digest(env.STAFF_SETUP_KEY) : null;
     const query = (sql, ...args) => db.prepare(sql).bind(...args);
+    const profile = async account => {
+      const data = await query("SELECT r.name AS rank,r.management,p.department FROM staff_users u LEFT JOIN staff_profiles p ON p.user_id=u.id LEFT JOIN staff_ranks r ON r.id=COALESCE(p.rank_id,'staff') WHERE u.id=?", account.id).first();
+      return { ...account, ...data };
+    };
+    const audit = (action, detail, actor) => query('INSERT INTO staff_activity(id,actor_id,action,detail,created_at) VALUES (?,?,?,?,?)', crypto.randomUUID(), actor, action, detail, now);
+
     if (method === 'GET' && action === 'status') {
       const admin = await query("SELECT id FROM staff_users WHERE role='chairman'").first();
       return response({ ready: true, setup: !admin && !!setupHash });
@@ -91,7 +97,7 @@ export async function onRequest({ request, env }) {
         ]);
         const user = await query('SELECT * FROM staff_users WHERE id=?', id).first();
         if (!user) fail('This invitation is no longer available.', 410);
-        return response({ user: publicUser(user) }, 201, { 'Set-Cookie': await newSession(id, false) });
+        return response({ user: publicUser(await profile(user)) }, 201, { 'Set-Cookie': await newSession(id, false) });
       }
       const email = emailField(body.email);
       await rate('account', 10, 15, email);
@@ -101,14 +107,16 @@ export async function onRequest({ request, env }) {
       if (!user || !same(check, user.password_hash) || !user.active) fail('Email or password is incorrect.', 401);
       await query('DELETE FROM staff_rate_limits WHERE expires_at<?', now).run();
       await query('DELETE FROM staff_sessions WHERE expires_at<?', now).run();
-      return response({ user: publicUser(user) }, 200, { 'Set-Cookie': await newSession(user.id, body.remember === true) });
+      return response({ user: publicUser(await profile(user)) }, 200, { 'Set-Cookie': await newSession(user.id, body.remember === true) });
     }
     const token = request.headers.get('Cookie')?.split(';').map(c => c.trim()).find(c => c.startsWith(cookieName + '='))?.slice(cookieName.length + 1) || '';
     if (!/^[a-f0-9]{64}$/.test(token)) fail('Please sign in to your Altaş account.', 401);
     const tokenHash = await digest(token);
-    const user = await query('SELECT u.* FROM staff_users u JOIN staff_sessions s ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1', tokenHash, now).first();
+    let user = await query('SELECT u.* FROM staff_users u JOIN staff_sessions s ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1', tokenHash, now).first();
     if (!user) fail('Your session has ended. Please sign in again.', 401);
-    if (method === 'GET' && action === 'me') return response({ user: publicUser(user) });
+    user = await profile(user);
+    const manager = user.role === 'chairman' || !!user.management;
+    if (method === 'GET' && action === 'me') return response({ user: publicUser(await profile(user)) });
     if (method === 'POST') await rate('writes', 60, 5, user.id);
     if (method === 'POST' && action === 'logout') {
       await query('DELETE FROM staff_sessions WHERE token_hash=?', tokenHash).run();
@@ -125,9 +133,73 @@ export async function onRequest({ request, env }) {
     if (method === 'GET' && action === 'dashboard') {
       const announcements = await query('SELECT a.id,a.title,a.body,a.created_at,u.name AS author FROM staff_announcements a JOIN staff_users u ON u.id=a.author_id ORDER BY a.created_at DESC LIMIT 100').all();
       const resources = await query('SELECT id,title,url FROM staff_resources ORDER BY created_at DESC LIMIT 100').all();
-      return response({ announcements: announcements.results, resources: resources.results });
+      const tasks = await query(`SELECT t.*,u.name AS assignee FROM staff_tasks t JOIN staff_users u ON u.id=t.assignee_id ${manager ? '' : 'WHERE t.assignee_id=?'} ORDER BY CASE t.status WHEN 'done' THEN 1 ELSE 0 END, t.created_at DESC LIMIT 200`, ...(manager ? [] : [user.id])).all();
+      return response({ announcements: announcements.results, resources: resources.results, tasks: tasks.results });
     }
-    if (user.role !== 'chairman') fail('Only the chairman can manage Holdings staff and content.', 403);
+    if (method === 'POST' && action === 'task-status') {
+      const id = field(body.id, 1, 100, 'Task ID');
+      if (!['todo','in_progress','done'].includes(body.status)) fail('Choose a valid task status.');
+      const task = await query('SELECT * FROM staff_tasks WHERE id=?', id).first();
+      if (!task) fail('Task not found.', 404);
+      if (!manager && task.assignee_id !== user.id) fail('You can only update your own tasks.', 403);
+      await db.batch([query('UPDATE staff_tasks SET status=?,updated_at=? WHERE id=?', body.status, now, id), audit('Task status updated', task.title + ' → ' + body.status, user.id)]);
+      return response({ ok: true });
+    }
+    if (!manager) fail('Management access is required.', 403);
+    const chairmanActions = ['staff','invite','staff-access','staff-profile','rank','activity','revoke-invite'];
+    if (chairmanActions.includes(action) && user.role !== 'chairman') fail('Only the chairman can manage ranks and staff access.', 403);
+    if (method === 'GET' && action === 'directory') {
+      const result = await query("SELECT u.id,u.name,u.email,u.role,u.active,COALESCE(r.name,'Holdings Staff') AS rank,COALESCE(p.department,'') AS department,COALESCE(p.rank_id,'staff') AS rank_id,COALESCE(r.management,0) AS management FROM staff_users u LEFT JOIN staff_profiles p ON p.user_id=u.id LEFT JOIN staff_ranks r ON r.id=COALESCE(p.rank_id,'staff') ORDER BY u.name").all();
+      const ranks = await query('SELECT * FROM staff_ranks ORDER BY sort_order,name').all();
+      return response({ staff: result.results, ranks: ranks.results });
+    }
+    if (method === 'GET' && action === 'activity') {
+      const result = await query('SELECT a.action,a.detail,a.created_at,u.name AS actor FROM staff_activity a JOIN staff_users u ON u.id=a.actor_id ORDER BY a.created_at DESC,a.rowid DESC LIMIT 100').all();
+      return response({ activity: result.results });
+    }
+    if (method === 'POST' && action === 'rank') {
+      const name = field(body.name,2,60,'Rank name');
+      if (typeof body.management !== 'boolean') fail('Choose rank permissions.');
+      if (name.toLowerCase() === 'chairman') fail('Chairman is reserved for the owner.');
+      const id = body.id ? field(body.id,1,100,'Rank ID') : crypto.randomUUID();
+      const old = await query('SELECT * FROM staff_ranks WHERE id=?', id).first();
+      if (body.id && !old) fail('Rank not found.',404);
+      const duplicate = await query('SELECT id FROM staff_ranks WHERE name=? AND id<>?',name,id).first();
+      if (duplicate) fail('A rank already uses this name.',409);
+      // The fallback rank cannot gain management permissions.
+      if (id === 'staff' && body.management) fail('The default staff rank must keep standard permissions.');
+      await db.batch([query('INSERT INTO staff_ranks(id,name,management,sort_order) VALUES (?,?,?,50) ON CONFLICT(id) DO UPDATE SET name=excluded.name,management=excluded.management',id,name,body.management?1:0),audit(old?'Rank updated':'Rank created',name + (body.management?' · management':' · standard'),user.id)]);
+      return response({ok:true});
+    }
+    if (method === 'POST' && action === 'staff-profile') {
+      const id = field(body.id,1,100,'Staff ID'), rank = field(body.rank_id,1,100,'Rank');
+      const department = typeof body.department === 'string' ? body.department.trim() : '';
+      if (department.length > 80) fail('Department must be at most 80 characters.');
+      const target = await query("SELECT * FROM staff_users WHERE id=? AND role='staff'",id).first();
+      if (!target) fail('Staff member not found.',404);
+      const selected = await query('SELECT * FROM staff_ranks WHERE id=?',rank).first();
+      if (!selected) fail('Rank not found.',404);
+      await db.batch([query('INSERT INTO staff_profiles(user_id,rank_id,department) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET rank_id=excluded.rank_id,department=excluded.department',id,rank,department),audit('Staff rank updated',target.name + ' · ' + selected.name + (department?' · '+department:''),user.id)]);
+      return response({ok:true});
+    }
+    if (method === 'POST' && action === 'revoke-invite') {
+      const email = emailField(body.email);
+      await db.batch([query('DELETE FROM staff_invites WHERE email=? AND used_at IS NULL',email),audit('Invitation revoked',email,user.id)]);
+      return response({ok:true});
+    }
+    if (method === 'POST' && action === 'task') {
+      const title = field(body.title,3,120,'Task title');
+      const description = typeof body.description === 'string' ? body.description.trim() : '';
+      if (description.length > 4000) fail('Task description is too long.');
+      const assignee = field(body.assignee_id,1,100,'Assignee');
+      if (!await query('SELECT id FROM staff_users WHERE id=? AND active=1',assignee).first()) fail('Choose an active staff member.');
+      if (!['normal','high'].includes(body.priority)) fail('Choose a valid priority.');
+      const due = body.due_date || '';
+      if (typeof due !== 'string' || (due && (!/^\d{4}-\d{2}-\d{2}$/.test(due) || !Number.isFinite(Date.parse(due+'T00:00:00Z')) || new Date(due+'T00:00:00Z').toISOString().slice(0,10)!==due))) fail('Enter a valid due date.');
+      await db.batch([query('INSERT INTO staff_tasks(id,title,description,assignee_id,created_by,priority,due_date,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',crypto.randomUUID(),title,description,assignee,user.id,body.priority,due,now,now),audit('Task assigned',title,user.id)]);
+      return response({ok:true},201);
+    }
+
     if (method === 'GET' && action === 'staff') {
       const result = await query('SELECT id,email,name,role,active,created_at FROM staff_users ORDER BY created_at').all();
       const invites = await query('SELECT email,name,expires_at FROM staff_invites WHERE used_at IS NULL AND expires_at>? ORDER BY expires_at DESC', now).all();
@@ -137,21 +209,21 @@ export async function onRequest({ request, env }) {
       const email = emailField(body.email), name = field(body.name, 2, 80, 'Name');
       if (await query('SELECT id FROM staff_users WHERE email=?', email).first()) fail('An account already exists for this email.', 409);
       const token = random(), expires = now + 48 * 3600000;
-      await db.batch([query('DELETE FROM staff_invites WHERE email=?', email), query('INSERT INTO staff_invites(token_hash,email,name,expires_at,created_by) VALUES (?,?,?,?,?)', await digest(token), email, name, expires, user.id)]);
+      await db.batch([query('DELETE FROM staff_invites WHERE email=?', email), query('INSERT INTO staff_invites(token_hash,email,name,expires_at,created_by) VALUES (?,?,?,?,?)', await digest(token), email, name, expires, user.id),audit('Invitation created',name+' · '+email,user.id)]);
       return response({ link: `${url.origin}/staff/#invite=${token}`, expires_at: expires }, 201);
     }
     if (method === 'POST' && action === 'staff-access') {
       const id = field(body.id, 1, 100, 'Staff ID');
       if (id === user.id) fail('You cannot suspend your own account.');
-      const target = await query("SELECT id FROM staff_users WHERE id=? AND role='staff'", id).first();
+      const target = await query("SELECT id,name FROM staff_users WHERE id=? AND role='staff'", id).first();
       if (!target) fail('Staff member not found.', 404);
       if (typeof body.active !== 'boolean') fail('Choose an access status.');
-      await db.batch([query('UPDATE staff_users SET active=? WHERE id=?', body.active ? 1 : 0, id), query('DELETE FROM staff_sessions WHERE user_id=?', id)]);
+      await db.batch([query('UPDATE staff_users SET active=? WHERE id=?', body.active ? 1 : 0, id), query('DELETE FROM staff_sessions WHERE user_id=?', id),audit(body.active?'Staff access restored':'Staff access suspended',target.name,user.id)]);
       return response({ ok: true });
     }
     if (method === 'POST' && action === 'announcement') {
       const title = field(body.title, 3, 120, 'Title'), text = field(body.body, 5, 8000, 'Announcement');
-      await query('INSERT INTO staff_announcements(id,title,body,author_id,created_at) VALUES (?,?,?,?,?)', crypto.randomUUID(), title, text, user.id, now).run();
+      await db.batch([query('INSERT INTO staff_announcements(id,title,body,author_id,created_at) VALUES (?,?,?,?,?)', crypto.randomUUID(), title, text, user.id, now),audit('Announcement published',title,user.id)]);
       return response({ ok: true }, 201);
     }
     if (method === 'POST' && action === 'resource') {
@@ -159,14 +231,14 @@ export async function onRequest({ request, env }) {
       let link;
       try { link = new URL(value); } catch { fail('Enter a valid HTTPS link.'); }
       if (link.protocol !== 'https:' || link.username || link.password) fail('Use an HTTPS link without embedded credentials.');
-      await query('INSERT INTO staff_resources(id,title,url,created_at) VALUES (?,?,?,?)', crypto.randomUUID(), title, link.href, now).run();
+      await db.batch([query('INSERT INTO staff_resources(id,title,url,created_at) VALUES (?,?,?,?)', crypto.randomUUID(), title, link.href, now),audit('Resource added',title,user.id)]);
       return response({ ok: true }, 201);
     }
     if (method === 'POST' && action === 'delete-content') {
       const id = field(body.id, 1, 100, 'Item ID');
       if (!['announcement', 'resource'].includes(body.kind)) fail('Unknown content type.');
       const table = body.kind === 'announcement' ? 'staff_announcements' : 'staff_resources';
-      await query(`DELETE FROM ${table} WHERE id=?`, id).run();
+      await db.batch([query(`DELETE FROM ${table} WHERE id=?`, id),audit('Content deleted',body.kind+' · '+id,user.id)]);
       return response({ ok: true });
     }
     return response({ error: 'Not found.' }, 404);
