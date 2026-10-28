@@ -643,6 +643,32 @@ a,button{transition:background-color .2s ease,color .2s ease,box-shadow .2s ease
 .view[data-view="home"] .carousel-about{font-size:12px}
 }
 
+
+/* Unified, restrained homepage actions. */
+.view[data-view="home"]{--home-red:#922c40}
+.view[data-view="home"] .studio-button,
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link{
+ background:#922c40;border:1px solid #a43b50;color:#fff;
+ border-radius:10px;min-height:44px;padding:10px 17px;gap:14px;
+ font-size:12px;font-weight:500;line-height:1.5;letter-spacing:0;
+ box-shadow:inset 0 1px 0 #ffffff10;
+ transition:background .18s,border-color .18s,box-shadow .18s;
+}
+.view[data-view="home"] .studio-button:hover,
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link:hover{
+ background:#7e2335;border-color:#963247;color:#fff;
+ box-shadow:inset 0 1px 0 #ffffff10;transform:none;
+}
+.view[data-view="home"] .studio-button b,
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link span{
+ font-size:15px;font-weight:400;line-height:1;opacity:.85;
+}
+.view[data-view="home"] .studio-button:active,
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link:active{
+ background:#6f1e2e;box-shadow:none;
+}
+.view[data-view="home"] .overview-icon{color:#d17686}
+
 </style><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"></head><body><header class="site-header"><div class="shell header-inner"><a class="wordmark" href="#/home" aria-label="Altaş Holdings home"><img src="/assets/atlas-logo.svg" alt="Altaş Holdings emblem"><span><strong>Altaş Holdings</strong><small>LIMITED</small></span></a>
 <nav class="desktop-nav" aria-label="Main navigation">
 <a class="nav-home" href="#/home">Home</a>
