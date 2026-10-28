@@ -712,6 +712,34 @@ a,button{transition:background-color .2s ease,color .2s ease,box-shadow .2s ease
 .view[data-view="home"] .group-card-grid>.group-card:first-child{min-height:400px}
 }
 
+
+/* Corendon-style primary actions throughout the public website. */
+.site-header .desktop-nav .nav-staff,
+.site-header .mobile-panel .nav-staff,
+.view .studio-button,
+.view[data-view="home"] .studio-button{
+ background:#df2518;border:1px solid #df2518;color:#fff;
+ border-radius:10px;padding:10px 16px;min-height:44px;
+ font-size:14px;font-weight:500;line-height:1.5;
+ box-shadow:none;gap:0;transition:background .18s,border-color .18s;
+}
+.site-header .desktop-nav .nav-staff:hover,
+.site-header .mobile-panel .nav-staff:hover,
+.view .studio-button:hover,
+.view[data-view="home"] .studio-button:hover{
+ background:#c42015;border-color:#c42015;color:#fff;box-shadow:none;transform:none;
+}
+.site-header .desktop-nav .nav-staff:active,
+.site-header .mobile-panel .nav-staff:active,
+.view .studio-button:active,
+.view[data-view="home"] .studio-button:active{background:#ac1c13;border-color:#ac1c13;box-shadow:none}
+.site-header .nav-staff>span[aria-hidden],
+.view .studio-button>b[aria-hidden]{display:none}
+.site-header .nav-staff:focus-visible,.view .studio-button:focus-visible{
+ outline:3px solid #444;outline-offset:3px;
+}
+.carousel-actions .studio-button:focus-visible{outline-color:#fff}
+
 </style><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"></head><body><header class="site-header"><div class="shell header-inner"><a class="wordmark" href="#/home" aria-label="Altaş Holdings home"><img src="/assets/atlas-logo.svg" alt="Altaş Holdings emblem"><span><strong>Altaş Holdings</strong><small>LIMITED</small></span></a>
 <nav class="desktop-nav" aria-label="Main navigation">
 <a class="nav-home" href="#/home">Home</a>
