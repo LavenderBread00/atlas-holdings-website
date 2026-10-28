@@ -520,7 +520,7 @@ a,button{transition:background-color .2s ease,color .2s ease,box-shadow .2s ease
 }
 
 
-/* Homepage image gallery: a 1.2-second crossfade every 7 seconds. */
+/* Homepage image gallery: a 1.2-second crossfade every 10 seconds. */
 .home-carousel{position:relative;isolation:isolate;overflow:hidden;height:470px;margin-top:25px;margin-bottom:28px;border-radius:24px;background:#17222e;color:#fff}
 .carousel-frame{position:absolute;inset:0;opacity:0;transition:opacity 1.2s ease-in-out;pointer-events:none;z-index:0}
 .carousel-frame.is-current{opacity:1}
@@ -556,69 +556,10 @@ a,button{transition:background-color .2s ease,color .2s ease,box-shadow .2s ease
 .carousel-a11y-pause:focus-visible{right:18px;bottom:18px;width:auto;height:auto;min-height:44px;padding:10px 16px;clip-path:none;background:#fff;color:#8b253b;border-radius:10px}
 .studio-company-image,.studio-info-photo,.rev-airline-photo{background-position:center center}
 
-/* A softer Altaş: berry, blush and small playful details. */
-:root{--red:#962d50;--wine:#962d50;--ink:#493442;--muted:#806b7b;--line:#efdfE8;--paper:#fffafd}
-body{background:#fffafd;color:#493442;background-image:radial-gradient(#e8cdda70 .8px,transparent .8px);background-size:25px 25px}
-h1,h2,h3{font-family:'Outfit',sans-serif}
-.site-header{background:#fffafdeF;border-bottom:1px solid #f0dfe8;backdrop-filter:blur(14px)}
-.site-header .wordmark strong{color:#613b50;letter-spacing:-.04em}.site-header .wordmark small{color:#a37e94}
-.site-header .desktop-nav>.nav-home,.site-header .nav-trigger{border-radius:999px}
-.site-header .desktop-nav>.nav-home[aria-current=page]{background:#f8e6f0;color:#8c2950;box-shadow:inset 0 0 0 1px #eed3e1}
-.site-header .desktop-nav .nav-staff{border-radius:999px;background:linear-gradient(120deg,#a63d61,#852749);border-color:#a33c60;box-shadow:0 5px 0 #efdae5;transition:transform .2s,box-shadow .2s}
-.site-header .desktop-nav .nav-staff:hover{transform:translateY(-2px);box-shadow:0 7px 0 #efdae5}
-.nav-dropdown{border:1px solid #eedce7;border-radius:24px;box-shadow:0 16px 45px #8d47671a;background:#fffafd}
-.site-header .desktop-nav .nav-dropdown a{border-radius:15px}.site-header .desktop-nav .nav-dropdown a:hover{background:#f9eaf2}
-.site-header .mobile-panel{background:#fffafd;border-color:#eedce7}.mobile-nav-children{background:#faeaf2;border-radius:20px}
-.home-carousel{border:7px solid #fff;border-radius:36px;box-shadow:0 15px 45px #a24c6a16,0 0 0 1px #efdee7;margin-top:30px;margin-bottom:32px}
-.carousel-frame{border-radius:27px;overflow:hidden}
-.carousel-shade{background:linear-gradient(90deg,#2f162cce,#34203566 49%,#34203505 85%),linear-gradient(0deg,#34203538,transparent 45%)}
-.carousel-copy{padding:43px 40px 44px;max-width:660px}
-.carousel-copy>span{display:inline-flex;align-items:center;padding:8px 12px;border:1px solid #ffffff60;border-radius:999px;background:#fff1f71a;font-size:9px;letter-spacing:.11em;color:#fff2f8}
-.carousel-copy h1{font-weight:600;letter-spacing:-.04em;text-shadow:0 2px 20px #38213524;line-height:1.12;margin-top:22px}
-.carousel-copy p{color:#fff0f7;line-height:1.85}
-.studio-button,.carousel-actions .studio-button{border-radius:999px;background:#a23158;border-color:#a23158;box-shadow:0 4px 0 #6b203542;transition:transform .2s,box-shadow .2s,background .2s}
-.studio-button:hover{background:#872548;transform:translateY(-2px);box-shadow:0 6px 0 #6b203535}
-.carousel-actions .studio-button{background:#ffe5f0;border-color:#ffe5f0;color:#742744;box-shadow:0 4px 0 #45233555}
-.carousel-actions .studio-button:hover{background:#fff4f9}
-.carousel-about{color:#fff4f8}.cute-sparkles{position:absolute;right:28px;top:27px;z-index:2;pointer-events:none;width:108px;height:108px;color:#ffe2ee;opacity:.9;transform:rotate(9deg)}
-.cute-sparkles svg{width:100%;height:100%;overflow:visible}
-.studio-ticker{background:transparent;border:0}
-.studio-ticker .shell{border:1px solid #f1dce8;background:#fbebf3;border-radius:999px;padding:15px 24px;justify-content:center;gap:35px;color:#80536e}
-.studio-ticker span{font-size:9px;letter-spacing:.05em;color:#80536e}
-.studio-ticker i{width:5px;height:5px;background:#c28aab;transform:rotate(45deg);border-radius:1px}
-.group-section{padding:58px 0}.group-section-soft{background:#fbf2f8;border-top:1px solid #f2e4ed;border-bottom:1px solid #f2e4ed}
-.homepage-section-heading{border-color:#eedbe7;padding-bottom:21px;position:relative}
-.homepage-section-heading h2,.group-section-title h2,.group-editorial h2,.group-inline-cta h2,.group-inline-note h2{color:#56364b;font-weight:600;letter-spacing:-.035em}
-.homepage-section-heading h2{font-weight:600}
-.homepage-section-link{color:#963459;background:#f7e7f0;border-radius:999px;padding:9px 14px;font-size:11px;gap:13px;white-space:nowrap}
-.homepage-section-link:hover{background:#f0d9e7}
-.group-card,.group-notice{border-color:#efdfeb;border-radius:28px;box-shadow:0 7px 0 #f0e3ec88,0 12px 35px #70465e06;transition:transform .22s,box-shadow .22s}
-.group-card:hover,.group-notice:hover{transform:translateY(-3px);box-shadow:0 9px 0 #efdfeb88,0 16px 35px #70465e0b}
-.group-card-grid>.group-card:nth-child(3n+1){background:#fff4f8}
-.group-card-grid>.group-card:nth-child(3n+2){background:#f6f2ff;border-color:#e9e1f4}
-.group-card-grid>.group-card:nth-child(3n){background:#f1f8f4;border-color:#deece4}
-.group-card .group-kicker,.group-notice .notice-date>span{display:inline-flex;border-radius:999px;padding:6px 10px;background:#ffffffb3;border:1px solid #ead6e3;color:#8d385e;font-size:8px;letter-spacing:.08em}
-.group-card h2,.group-card h3,.group-notice h3{color:#58394d;font-weight:600}
-.group-card p,.group-notice p,.group-section-title p,.group-editorial p,.group-inline-cta p,.group-inline-note p{color:#796576}
-.group-text-link{color:#963459;gap:14px}.group-text-link span{display:inline-grid;place-items:center;border-radius:50%;background:#f3e1ec;width:28px;height:28px;font-size:16px}
-.studio-company{border:1px solid #eadce6;border-radius:30px;box-shadow:0 9px 0 #f2e6ee80,0 18px 45px #683b5108;padding:9px;overflow:hidden;background:#fff}
-.studio-company-image{border-radius:22px;margin:0;background-position:center center}
-.studio-company-text h3{font-weight:600;color:#58394d;letter-spacing:-.035em}
-.studio-company-text>span{display:inline-block;border:1px solid #ebd4e1;border-radius:999px;padding:6px 10px;background:#fff1f7;color:#963459;font-size:8px}
-.company-tags span{border-radius:999px;background:#faf1f6;border-color:#eedee8;color:#99617f;padding:5px 9px}
-.group-page-head{background:radial-gradient(ellipse at 90% 20%,#f0e8fb 0,transparent 45%),linear-gradient(120deg,#fff4f9,#fffafd);border-color:#eedee8;position:relative;overflow:hidden}
-.group-page-head h1{color:#613b50;font-weight:600;letter-spacing:-.04em}
-.group-page-head p{color:#806c7d}.group-page-head .group-kicker{display:inline-block;background:#fff;border:1px solid #efdce7;border-radius:999px;padding:7px 12px}
-.group-status{border-radius:14px;background:#f9f1f7;border-color:#eedee8;color:#806278}
-.group-principles article{border-radius:25px;border-color:#efdfeb;box-shadow:0 4px 0 #f2e7ef80}
-.group-principles article>span{display:grid;place-items:center;flex:none;width:38px;height:38px;padding:0;background:#f9e7f1;border-radius:14px;color:#963459}
-.group-principles h3{font-weight:600;color:#613b50}
-.site-footer{background:#563248;border-radius:40px 40px 0 0;border-top:6px solid #f0d4e3;margin-top:15px}
-.site-footer .wordmark strong{color:#fff1f8}.site-footer .wordmark small{color:#e9c4d8}.footer-brand p{color:#e0c4d5}.group-footer-nav h3{color:#fff0f8}.group-footer-nav a{color:#e1c7d8}.footer-bottom{border-color:#ffffff24;color:#d9b7cc}
-:focus-visible{outline-color:#b35b87;outline-offset:4px}
-@media(max-width:760px){.group-card,.group-notice{border-radius:25px}.studio-company{border-radius:27px;padding:7px}.studio-company-image{border-radius:20px}.site-footer{border-radius:29px 29px 0 0}.cute-sparkles{width:73px;height:73px;right:17px;top:21px}.studio-ticker .shell{gap:16px;padding:14px 13px;flex-wrap:wrap}.studio-ticker span{font-size:8px}}
-@media(max-width:600px){.home-carousel{border-width:5px;border-radius:28px;margin-top:21px;height:450px}.carousel-frame{border-radius:21px}.carousel-copy{padding:31px 21px;max-width:none}.carousel-copy>span{font-size:7px;padding:7px 9px}.carousel-copy h1{font-size:clamp(34px,9.3vw,42px);margin-top:22px}.carousel-copy p{font-size:12px;max-width:300px}.cute-sparkles{width:54px;height:54px;right:12px;top:17px;opacity:.75}.carousel-actions{gap:14px}.homepage-section-heading{gap:17px}.homepage-section-link{padding:9px 13px}.group-section{padding:43px 0}.studio-ticker .shell{border-radius:22px;gap:12px}.site-header .menu-toggle{background:#fff6fb;border-radius:16px;border-color:#efdce8}}
-@media(prefers-reduced-motion:reduce){.group-card,.group-notice,.studio-button,.site-header .desktop-nav .nav-staff{transition:none}.group-card:hover,.group-notice:hover,.studio-button:hover,.site-header .desktop-nav .nav-staff:hover{transform:none}}
+/* Restrained finishing touches: retain the clean burgundy identity. */
+.group-card,.group-notice{border-radius:24px;box-shadow:0 7px 25px #30203306}
+.studio-company{border-radius:24px}
+.studio-button,.carousel-actions .studio-button{border-radius:13px}
 </style><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"></head><body><header class="site-header"><div class="shell header-inner"><a class="wordmark" href="#/home" aria-label="Altaş Holdings home"><img src="/assets/atlas-logo.svg" alt="Altaş Holdings emblem"><span><strong>Altaş Holdings</strong><small>LIMITED</small></span></a>
 <nav class="desktop-nav" aria-label="Main navigation">
 <a class="nav-home" href="#/home">Home</a>
@@ -641,7 +582,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif}
 <div class="carousel-frame" data-slide-index="5" role="group" aria-roledescription="slide" aria-label="6 of 8" aria-hidden="true"><img src="/assets/gallery-4-original.webp" alt="Corendon aircraft with catering and ground support vehicles" width="1920" height="1078" decoding="async"></div>
 <div class="carousel-frame" data-slide-index="6" role="group" aria-roledescription="slide" aria-label="7 of 8" aria-hidden="true"><img src="/assets/gallery-5-original.webp" alt="Front view of a Corendon aircraft with its ground support team" width="1920" height="1103" decoding="async"></div>
 <div class="carousel-frame" data-slide-index="7" role="group" aria-roledescription="slide" aria-label="8 of 8" aria-hidden="true"><img src="/assets/gallery-7-original.webp" alt="Corendon aircraft seen through the terminal windows" width="1920" height="1080" decoding="async"></div>
-<div class="carousel-shade" aria-hidden="true"></div><div class="cute-sparkles" aria-hidden="true"><svg viewBox="0 0 110 110" fill="none"><path d="M67 9c0 19-7 26-24 27 17 1 24 8 24 26 1-18 8-25 25-26C75 35 68 28 67 9Z" fill="currentColor" fill-opacity=".88"/><path d="M24 62c0 10-4 14-13 15 9 0 13 4 13 14 1-10 5-14 14-14-9-1-13-5-14-15Z" fill="currentColor" fill-opacity=".6"/><path d="M75 82c8-2 15-9 15-18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 6"/><circle cx="96" cy="91" r="3" fill="currentColor"/></svg></div><div class="carousel-copy"><span>ALTAŞ HOLDINGS LIMITED</span><h1>One group.<br>Shared ambition.</h1><p>Independent airline brands, supported by a shared vision for Roblox aviation.</p><div class="carousel-actions"><a class="studio-button" href="#/group">Our Companies <b aria-hidden="true">↗</b></a><a class="carousel-about" href="#/about">Discover Altaş <span aria-hidden="true">→</span></a></div></div>
+<div class="carousel-shade" aria-hidden="true"></div><div class="carousel-copy"><span>ALTAŞ HOLDINGS LIMITED</span><h1>One group.<br>Shared ambition.</h1><p>Independent airline brands, supported by a shared vision for Roblox aviation.</p><div class="carousel-actions"><a class="studio-button" href="#/group">Our Companies <b aria-hidden="true">↗</b></a><a class="carousel-about" href="#/about">Discover Altaş <span aria-hidden="true">→</span></a></div></div>
 <button class="carousel-a11y-pause" id="carousel-pause" type="button" aria-label="Pause slideshow" aria-pressed="false">Pause slideshow</button></section><section class="studio-ticker" aria-label="Group focus"><div class="shell"><span>GROUP LEADERSHIP</span><i aria-hidden="true"></i><span>DISTINCT AIRLINE BRANDS</span><i aria-hidden="true"></i><span>SHARED DEVELOPMENT</span></div></section>
 <section class="group-section"><div class="shell"><div class="homepage-section-heading"><h2>A group built around its companies.</h2><a class="homepage-section-link" href="#/about">About Altaş <b aria-hidden="true">↗</b></a></div><p class="homepage-section-intro">Altaş is the parent group behind our airline portfolio. We focus on the direction and support that help individual brands develop.</p><div class="group-card-grid"><article class="group-card"><span class="group-kicker">THE GROUP</span><h3>Purpose &amp; leadership</h3><p>A clear direction for the group, with responsibilities at both Holdings and airline level.</p><a class="group-text-link" href="#/approach">Meet our structure<span aria-hidden="true">↗</span></a></article><article class="group-card"><span class="group-kicker">OUR COMPANIES</span><h3>Individual identities</h3><p>A portfolio of airline brands, each with its own experience, team and community.</p><a class="group-text-link" href="#/group">Explore our companies<span aria-hidden="true">↗</span></a></article><article class="group-card"><span class="group-kicker">SHARED SUPPORT</span><h3>Stronger foundations</h3><p>Digital development, shared resources and collaboration across the group.</p><a class="group-text-link" href="#/services">Our group functions<span aria-hidden="true">↗</span></a></article></div></div></section>
 <section class="group-section group-section-soft"><div class="shell"><div class="homepage-section-heading"><h2>Our Companies</h2><a class="homepage-section-link" href="#/group">View the portfolio <b aria-hidden="true">↗</b></a></div><p class="homepage-section-intro">Distinct airline experiences, supported by Altaş Holdings as their parent group.</p><article class="studio-company group-company-card"><div class="studio-company-image" role="img" aria-label="Corendon Airlines Roblox aircraft"></div><div class="studio-company-text"><span>OWNED SUBSIDIARY</span><h3>Corendon<br>Airlines Roblox</h3><p>Our current airline subsidiary brings the Corendon identity to the Roblox aviation community. Altaş provides group leadership and support while Corendon develops its own airline experience.</p><div class="company-tags"><span>ROBLOX AVIATION</span><span>ALTAŞ GROUP</span></div><a class="studio-button" href="https://corendonvirtual.zone.id/" target="_blank" rel="noopener noreferrer">Visit Corendon <b aria-hidden="true">↗</b></a></div></article></div></section>
