@@ -8,7 +8,7 @@ The staff hub uses its own D1 database, accounts and cookies. It does not accept
 2. In the existing Pages project's Settings → Bindings, add a D1 binding named **STAFF_DB**, pointing to that database. Set the production binding; use a different database for previews if desired.
 3. Add an encrypted Pages environment variable named **STAFF_SETUP_KEY**, with a randomly generated secret at least 32 characters long. Never commit the key. Keep it private until the chairman account is created.
 4. Redeploy the Pages project so the binding and variable apply. Keep the existing root output directory and no build command. The Pages Git build must deploy the repository's `functions` directory; a dashboard drag-and-drop upload alone does not deploy Functions.
-5. Open `/staff/`, choose **First-time chairman setup**, enter the private setup key, the chairman's name, email and a password of at least 12 characters. The database enforces only one chairman.
+5. Open `/staff/`, choose **First-time chairman setup**, enter the private setup key, the chairman's name, email and a password of at least 6 characters. The database enforces only one chairman.
 6. Remove **STAFF_SETUP_KEY** from the Cloudflare project and redeploy. Setup is also automatically refused once a chairman exists.
 
 If the database is absent or uninitialised, the hub refuses sign-in and displays an activation message. No default password or public registration is provided.
