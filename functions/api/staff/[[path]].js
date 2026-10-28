@@ -28,7 +28,7 @@ const emailField = value => {
   return email;
 };
 const passField = value => {
-  if (typeof value !== 'string' || value.length < 12 || value.length > 128) fail('Use a password between 12 and 128 characters.');
+  if (typeof value !== 'string' || value.length < 6 || value.length > 128) fail('Use a password between 6 and 128 characters.');
   return value;
 };
 const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role });
