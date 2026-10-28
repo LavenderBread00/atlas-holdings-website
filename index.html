@@ -669,6 +669,49 @@ a,button{transition:background-color .2s ease,color .2s ease,box-shadow .2s ease
 }
 .view[data-view="home"] .overview-icon{color:#d17686}
 
+
+/* Match the Corendon check-in and outlined service cards. */
+.view[data-view="home"] .group-card-grid{gap:24px;align-items:stretch}
+.view[data-view="home"] .group-card-grid>.group-card{
+ background:#fff;border:1.5px solid #d99393;border-radius:24px;
+ padding:32px;min-height:380px;box-shadow:none;
+}
+.view[data-view="home"] .group-card-grid>.group-card:first-child{background:#222;border-color:#222}
+.view[data-view="home"] .group-card-grid>.group-card .group-kicker{display:none}
+.view[data-view="home"] .group-card-grid>.group-card .overview-icon{
+ color:#cd332b;width:38px;height:38px;stroke-width:2;margin-bottom:28px;
+}
+.view[data-view="home"] .group-card-grid>.group-card h3{
+ color:#222;font-size:28px;font-weight:650;line-height:1.2;margin:0 0 14px;
+}
+.view[data-view="home"] .group-card-grid>.group-card p{color:#737373;font-size:15px;line-height:1.65;margin-bottom:38px}
+.view[data-view="home"] .group-card-grid>.group-card:first-child h3{color:#fff}
+.view[data-view="home"] .group-card-grid>.group-card:first-child p{color:#c4c4c4}
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link{
+ background:#f5f5f5;color:#222;border:1px solid #eeeeee;border-radius:10px;
+ padding:10px 16px;min-height:44px;font-size:14px;font-weight:500;line-height:1.5;
+ box-shadow:0 2px 7px #0000000c;gap:0;margin-top:auto;
+}
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link span{display:none}
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link:hover{
+ background:#eaeaea;border-color:#dedede;color:#222;box-shadow:0 2px 7px #0000000c;
+}
+.view[data-view="home"] .group-card-grid>.group-card:first-child .group-text-link{
+ background:#df2518;border-color:#df2518;color:white;box-shadow:none;
+}
+.view[data-view="home"] .group-card-grid>.group-card:first-child .group-text-link:hover{background:#c42015;border-color:#c42015;color:white}
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link:focus-visible{outline:3px solid #922c40;outline-offset:4px}
+.view[data-view="home"] .group-card-grid>.group-card:first-child .group-text-link:focus-visible{outline-color:#fff}
+@media(max-width:1000px) and (min-width:761px){
+.view[data-view="home"] .group-card-grid>.group-card{padding:24px}
+.view[data-view="home"] .group-card-grid>.group-card h3{font-size:25px}
+.view[data-view="home"] .group-card-grid>.group-card .group-text-link{font-size:12px;padding:10px 12px}
+}
+@media(max-width:760px){
+.view[data-view="home"] .group-card-grid>.group-card{padding:28px;min-height:350px}
+.view[data-view="home"] .group-card-grid>.group-card:first-child{min-height:400px}
+}
+
 </style><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"></head><body><header class="site-header"><div class="shell header-inner"><a class="wordmark" href="#/home" aria-label="Altaş Holdings home"><img src="/assets/atlas-logo.svg" alt="Altaş Holdings emblem"><span><strong>Altaş Holdings</strong><small>LIMITED</small></span></a>
 <nav class="desktop-nav" aria-label="Main navigation">
 <a class="nav-home" href="#/home">Home</a>
