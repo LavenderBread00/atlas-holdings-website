@@ -1,0 +1,7 @@
+preview-dist
+.openai
+*.tmp
+migrations
+functions
+tests
+public
