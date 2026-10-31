@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { onRequest } from '../functions/api/staff/[[path]].js';
+import { readNewDeployment } from '../scripts/deployment-status.mjs';
 
 function database() {
   const sqlite = new DatabaseSync(':memory:');
@@ -37,6 +38,18 @@ function client(env, ip) {
     return { status: res.status, body: await res.json(), cookie: setCookie };
   };
 }
+
+test('a newly accepted deployment tolerates brief registration delay without hiding permission errors', async () => {
+  let reads=0, waits=0;
+  const result=await readNewDeployment(async()=>{reads++;if(reads<3)throw Object.assign(new Error('Not registered yet'),{status:404});return {latest_stage:{status:'success'}};},{pause:async()=>{waits++;}});
+  assert.equal(result.latest_stage.status,'success');assert.equal(reads,3);assert.equal(waits,2);
+  reads=0;waits=0;
+  await assert.rejects(()=>readNewDeployment(async()=>{reads++;throw Object.assign(new Error('Forbidden'),{status:403});},{pause:async()=>{waits++;}}),/Forbidden/);
+  assert.equal(reads,1);assert.equal(waits,0);
+  reads=0;waits=0;
+  await assert.rejects(()=>readNewDeployment(async()=>{reads++;throw Object.assign(new Error('Missing'),{status:404});},{pause:async()=>{waits++;},attempts:3}),/Missing/);
+  assert.equal(reads,3);assert.equal(waits,2);
+});
 
 test('Group CEO is the protected owner position and cannot be assigned or duplicated', async () => {
   const env={STAFF_DB:database(),STAFF_SETUP_KEY:'ceo-test-private-setup-key-at-least-32-characters'};

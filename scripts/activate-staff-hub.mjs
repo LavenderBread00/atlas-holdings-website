@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { readNewDeployment } from './deployment-status.mjs';
 
 const account = 'a9037651b7dade97f03a1d9f6b0eeb4a';
 const projectName = 'atlas-holdings-website';
@@ -13,7 +14,7 @@ async function api(path, method = 'GET', data) {
   const body = await res.json();
   if (!res.ok || body.success === false) {
     const codes = (body.errors || []).map(e => e.code).join(', ');
-    throw new Error(`Cloudflare ${method} ${path.split('?')[0]} failed (HTTP ${res.status}; codes ${codes || 'none'}). Check token account scope, Pages Write and D1 Write permissions.`);
+    throw Object.assign(new Error(`Cloudflare ${method} ${path.split('?')[0]} failed (HTTP ${res.status}; codes ${codes || 'none'}). Check the Cloudflare response and token permissions.`), { status: res.status });
   }
   return body.result;
 }
@@ -71,7 +72,7 @@ for (let attempt = 0; attempt < 36; attempt++) {
 const deployment = await api(`${projectPath}/deployments/${sourceDeployment.id}/retry`, 'POST');
 console.log(`Started production deployment ${deployment.id} with the staff database binding.`);
 for (let attempt = 0; attempt < 60; attempt++) {
-  const deployed = await api(`${projectPath}/deployments/${deployment.id}`);
+  const deployed = await readNewDeployment(() => api(`${projectPath}/deployments/${deployment.id}`), { pause, attempts: attempt === 0 ? 7 : 1 });
   const state = deployed.latest_stage?.status;
   if (state === 'success') {
     const res = await fetch('https://atlas-holdings-website.pages.dev/api/staff/status', { cache: 'no-store' });
