@@ -41,7 +41,15 @@
     wrapper.append(toggle);
   });
   let user = null, dashboard = null, directory = null;
-  const isManager = () => user?.role === 'chairman' || user?.management === true;
+  const permissionLabels = {
+    view_directory: 'View the staff directory',
+    view_all_tasks: 'View group tasks',
+    manage_tasks: 'Assign and update group tasks',
+    manage_announcements: 'Publish and remove announcements',
+    manage_resources: 'Add and remove shared resources'
+  };
+  const can = name => user?.role === 'chairman' || user?.permissions?.[name] === true;
+  const canOpenTab = name => !(['team','ranks','activity'].includes(name) && user?.role !== 'chairman') && !(name === 'directory' && !can('view_directory'));
   const ceoTitle = 'Group Chief Executive Officer';
   const rankName = person => person.role === 'chairman' ? ceoTitle : person.rank || 'Holdings Staff';
   const authParams = new URLSearchParams(location.hash.slice(1));
@@ -61,6 +69,9 @@
     try { result = await res.json(); } catch { throw new Error('The staff service is awaiting activation. Please contact the Group CEO.'); }
     if (!res.ok) {
       if (res.status === 401 && user) { user = null; showAuth(); }
+      if (res.status === 403 && user && action !== 'me') {
+        try { const current = await api('me'); if (user && current.user.id === user.id) { user = current.user; applyAccess(); } } catch {}
+      }
       throw new Error(result.error || 'The request could not be completed.');
     }
     return result;
@@ -87,21 +98,32 @@
   async function showWorkspace() {
     document.body.classList.add('is-signed-in');
     $('loading').hidden = true; $('auth').hidden = true; $('workspace').hidden = false;
-    document.querySelectorAll('.owner-only').forEach(el => { el.hidden = user.role !== 'chairman'; });
-    document.querySelectorAll('.management-only').forEach(el => { el.hidden = !isManager(); });
     const identity = $('identity'); identity.replaceChildren(element('strong', '', user.name), element('small', '', user.email));
-    $('role-badge').textContent = rankName(user).toUpperCase();
     $('identity-avatar').textContent = user.name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
     $('workspace-date').textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
-    $('task-preview-title').textContent = isManager() ? 'Group task list' : 'Your task list';
     $('greeting').textContent = 'Welcome, ' + user.name + '.';
-    $('account-summary').textContent = user.name + ' · ' + user.email + ' · ' + rankName(user) + (user.department ? ' · ' + user.department : '');
+    applyAccess();
     switchTab(location.hash.slice(1) || 'overview');
     await loadDashboard();
   }
+  function applyAccess() {
+    document.querySelectorAll('.owner-only').forEach(el => { el.hidden = user.role !== 'chairman'; });
+    document.querySelectorAll('[data-permission]').forEach(el => { el.hidden = !can(el.dataset.permission); });
+    $('management-nav-label').hidden = user.role !== 'chairman' && !can('view_directory');
+    if (!can('view_directory')) { directory = null; $('directory-list').replaceChildren(); }
+    $('role-badge').textContent = rankName(user).toUpperCase();
+    $('task-preview-title').textContent = can('view_all_tasks') ? 'Group task list' : 'Your task list';
+    $('account-summary').textContent = user.name + ' · ' + user.email + ' · ' + rankName(user) + (user.department ? ' · ' + user.department : '');
+    const list = $('account-access'); list.replaceChildren();
+    ['Read group announcements and shared resources','View and update your own tasks','Manage your own password'].forEach(text => list.append(element('li','',text)));
+    Object.entries(permissionLabels).filter(([key]) => can(key)).forEach(([,label]) => list.append(element('li','',label)));
+    if (user.role === 'chairman') list.append(element('li','','Manage staff accounts, ranks, permissions and the activity log'));
+    const active = document.querySelector('.nav-item.active')?.dataset.tab;
+    if (active && !canOpenTab(active)) switchTab('overview');
+  }
   function switchTab(name, moveFocus = false) {
     if (!user) return;
-    if (!tabLabels[name] || (['team','ranks','activity'].includes(name) && user.role !== 'chairman') || (name === 'directory' && !isManager())) name = 'overview';
+    if (!tabLabels[name] || !canOpenTab(name)) name = 'overview';
     notice('');
     $('workspace-menu').setAttribute('aria-expanded','false');
     $('workspace-menu').parentElement.classList.remove('menu-open');
@@ -113,7 +135,7 @@
     history.replaceState(null, '', location.pathname + (name === 'overview' ? '' : '#' + name));
     if (moveFocus) { $('tab-' + name).focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' }); }
     if (name === 'team') loadStaff().catch(error => notice(error.message));
-    if (['directory','ranks'].includes(name) || (name === 'tasks' && isManager())) loadDirectory().catch(error => notice(error.message));
+    if (['directory','ranks'].includes(name) || (name === 'tasks' && can('manage_tasks'))) loadDirectory().catch(error => notice(error.message));
     if (name === 'activity') loadActivity().catch(error => notice(error.message));
     if (name === 'tasks') loadDashboard().catch(error => notice(error.message));
   }
@@ -162,6 +184,8 @@
   async function loadDashboard() {
     const accountId = user?.id, result = await api('dashboard');
     if (!user || user.id !== accountId) return;
+    if (result.user?.id === accountId) user = result.user;
+    applyAccess();
     dashboard = result;
     renderTasks();
     const stats = $('hub-stats'); stats.replaceChildren();
@@ -171,7 +195,7 @@
     dashboard.announcements.forEach(item => {
       const card = element('article', 'announcement');
       card.append(element('h2', '', item.title), element('p', 'meta', item.author + ' · ' + date(item.created_at)), element('p', 'body', item.body));
-      if (isManager()) card.append(deleteButton('announcement', item.id));
+      if (can('manage_announcements')) card.append(deleteButton('announcement', item.id));
       list.append(card);
     });
     if (!dashboard.announcements.length) list.append(element('p', 'empty', 'No group announcements have been published yet.'));
@@ -179,16 +203,16 @@
     dashboard.resources.forEach(item => {
       const card = element('article', 'resource'), link = element('a', '', item.title + ' ↗');
       link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; card.append(link);
-      if (isManager()) card.append(deleteButton('resource', item.id));
+      if (can('manage_resources')) card.append(deleteButton('resource', item.id));
       resources.append(card);
     });
-    if (!dashboard.resources.length) resources.append(element('p', 'empty', 'Shared documents and links will appear here when added by the Group CEO.'));
+    if (!dashboard.resources.length) resources.append(element('p', 'empty', 'Shared documents and links will appear here when added by authorised staff.'));
   }
   function renderOverview() {
     const list = $('overview-tasks'); list.replaceChildren();
     const tasks = [...(dashboard.tasks || [])].filter(task => task.status !== 'done').sort((a,b) => (a.due_date || '9999').localeCompare(b.due_date || '9999') || Number(b.priority === 'high') - Number(a.priority === 'high')).slice(0,4);
-    tasks.forEach(task => { const row=element('article','preview-task'), glyph=element('span'), copy=element('div'); glyph.dataset.icon='tasks';glyph.setAttribute('aria-hidden','true');glyph.append(icon('tasks'));copy.append(element('h3','',task.title)); const due=task.due_date ? new Date(task.due_date+'T12:00:00').toLocaleDateString(undefined,{dateStyle:'medium'}) : 'No due date';copy.append(element('p','meta',(isManager()?task.assignee+' · ':'')+due));copy.append(element('span','tag',task.status==='in_progress'?'In progress':task.priority==='high'?'High priority':'To do'));row.append(glyph,copy);list.append(row); });
-    if (!tasks.length) {const empty=element('div','preview-empty');empty.append(element('strong','','You’re up to date.'),element('p','',isManager()?'Open Tasks to assign work and follow group progress.':'Your next assignments will appear here when added.'));list.append(empty);}
+    tasks.forEach(task => { const row=element('article','preview-task'), glyph=element('span'), copy=element('div'); glyph.dataset.icon='tasks';glyph.setAttribute('aria-hidden','true');glyph.append(icon('tasks'));copy.append(element('h3','',task.title)); const due=task.due_date ? new Date(task.due_date+'T12:00:00').toLocaleDateString(undefined,{dateStyle:'medium'}) : 'No due date';copy.append(element('p','meta',(can('view_all_tasks')?task.assignee+' · ':'')+due));copy.append(element('span','tag',task.status==='in_progress'?'In progress':task.priority==='high'?'High priority':'To do'));row.append(glyph,copy);list.append(row); });
+    if (!tasks.length) {const empty=element('div','preview-empty');empty.append(element('strong','','You’re up to date.'),element('p','',can('manage_tasks')?'Open Tasks to assign work and follow group progress.':can('view_all_tasks')?'Group assignments will appear here.':'Your next assignments will appear here when added.'));list.append(empty);}
     const latest=$('overview-announcement');latest.replaceChildren();
     const item=[...dashboard.announcements].sort((a,b)=>b.created_at-a.created_at)[0];
     if (item) {const card=element('article','preview-update');card.append(element('p','meta',item.author+' · '+date(item.created_at)),element('h3','',item.title),element('p','preview-body',item.body));latest.append(card);}
@@ -232,7 +256,9 @@
     select.value=value; label.append(select);return {label,select};
   }
   async function loadDirectory() {
-    directory=await api('directory');
+    const accountId=user?.id,result=await api('directory');
+    if(!user || user.id!==accountId || !can('view_directory'))return;
+    directory=result;
     directory.ranks = directory.ranks.filter(rank => rank.id !== 'group-ceo' && rank.name.toLowerCase() !== ceoTitle.toLowerCase());
     renderDirectory(); renderRanks();
     const select=$('task-assignee'), previous=select.value; select.replaceChildren(element('option','','Choose a staff member'));select.firstChild.value='';
@@ -248,10 +274,10 @@
       info.append(element('h2','',person.name),element('p','',person.email),element('span','tag',rankName(person)),element('p','meta',(person.department||'No department assigned')+' · '+(person.active?'Active':'Suspended')));card.append(info);
       if(user.role==='chairman' && person.role!=='chairman') {
         const form=element('form','profile-form'), row=element('div','fields');
-        const rank=selectControl('Rank',directory.ranks.map(r=>[r.id,r.name+(r.management?' · Management':'')]),person.rank_id);
+        const rank=selectControl('Rank',directory.ranks.map(r=>[r.id,r.name]),person.rank_id);
         const label=element('label','','Department'), department=element('input'); department.value=person.department;department.maxLength=80;label.append(department);row.append(rank.label,label);
         const save=element('button','','Save assignment');save.type='submit';form.append(row,save);
-        form.addEventListener('submit',async event=>{event.preventDefault();const selected=directory.ranks.find(r=>r.id===rank.select.value);if(selected?.management && !person.management && !confirm('Give '+person.name+' management permissions? They will be able to publish content and assign tasks.'))return;save.disabled=true;try{await api('staff-profile',{id:person.id,rank_id:rank.select.value,department:department.value});await loadDirectory();notice('Staff assignment saved.',true);}catch(error){notice(error.message);save.disabled=false;}});card.append(form);
+        form.addEventListener('submit',async event=>{event.preventDefault();const selected=directory.ranks.find(r=>r.id===rank.select.value);const grants=Object.keys(permissionLabels).filter(key=>selected?.permissions?.[key]&&!person.permissions?.[key]);if(grants.length&&!confirm('Give '+person.name+' this additional access?\n\n'+grants.map(key=>permissionLabels[key]).join('\n')))return;save.disabled=true;try{await api('staff-profile',{id:person.id,rank_id:rank.select.value,department:department.value});await loadDirectory();notice('Staff assignment saved.',true);}catch(error){notice(error.message);save.disabled=false;}});card.append(form);
       }
       list.append(card);
     });
@@ -267,11 +293,14 @@
     const ownerCard=element('article','panel');ownerCard.append(element('h2','',ceoTitle),element('p','','Your owner position · protected · full control'));list.append(ownerCard);
     ranks.forEach(rank=>{
       const form=element('form','panel'), title=element('h2','',rank.name), label=element('label','','Rank name'), name=element('input');name.value=rank.name;name.required=true;name.minLength=2;name.maxLength=60;label.append(name);
-      const permission=selectControl('Portal permissions',[['false','Standard staff'],['true','Management']],String(!!rank.management));
-      if(rank.id==='staff')permission.select.disabled=true;
+      const permissions=element('fieldset','rank-permissions'), legend=element('legend','','This rank can');permissions.append(legend);
+      const choices={};
+      Object.entries(permissionLabels).forEach(([key,text])=>{const label=element('label','check'),input=element('input');input.type='checkbox';input.checked=!!rank.permissions?.[key];input.disabled=rank.id==='staff';choices[key]=input;label.append(input,document.createTextNode(text));permissions.append(label);});
+      choices.manage_tasks.addEventListener('change',()=>{if(choices.manage_tasks.checked){choices.view_directory.checked=true;choices.view_all_tasks.checked=true;}});
+      ['view_directory','view_all_tasks'].forEach(key=>choices[key].addEventListener('change',()=>{if(!choices[key].checked)choices.manage_tasks.checked=false;}));
       const count=directory.staff.filter(p=>p.role!=='chairman' && p.rank_id===rank.id).length;
-      const save=element('button','','Save rank');save.type='submit';form.append(title,element('p','meta',count+' staff assigned'+(rank.id==='staff'?' · default rank':'')),label,permission.label,save);
-      form.addEventListener('submit',async event=>{event.preventDefault();const management=permission.select.value==='true';if(management!==!!rank.management && !confirm('Change permissions for '+rank.name+'? This applies immediately to all '+count+' staff assigned to this rank.'))return;save.disabled=true;try{await api('rank',{id:rank.id,name:name.value,management});await loadDirectory();notice('Rank updated.',true);}catch(error){notice(error.message);save.disabled=false;}});list.append(form);
+      const save=element('button','','Save rank');save.type='submit';form.append(title,element('p','meta',count+' staff assigned'+(rank.id==='staff'?' · default rank':'')),label,permissions,save);
+      form.addEventListener('submit',async event=>{event.preventDefault();const next=Object.fromEntries(Object.entries(choices).map(([key,input])=>[key,input.checked]));const changed=Object.keys(next).some(key=>next[key]!==!!rank.permissions?.[key]);if(changed&&!confirm('Change feature access for '+rank.name+'? This applies immediately to all '+count+' staff assigned to this rank.'))return;save.disabled=true;try{await api('rank',{id:rank.id,name:name.value,management:Object.values(next).some(Boolean),permissions:next});await loadDirectory();notice('Rank and feature access updated.',true);}catch(error){notice(error.message);save.disabled=false;}});list.append(form);
     });
   }
   $('copy-discord-ranks').addEventListener('click', async () => {
@@ -287,6 +316,7 @@
       card.append(element('span','tag',task.priority==='high'?'HIGH PRIORITY':'TASK'),element('h2','',task.title),element('p','task-description',task.description));
       const due=task.due_date?new Date(task.due_date+'T12:00:00').toLocaleDateString(undefined,{dateStyle:'medium'}):'No due date';
       card.append(element('p',task.due_date && task.due_date<today && task.status!=='done'?'overdue':'meta',task.assignee+' · '+due+(task.due_date && task.due_date<today && task.status!=='done'?' · Overdue':'')));
+      if (!can('manage_tasks') && task.assignee_id !== user.id) { card.append(element('p','tag','Progress: '+({todo:'To do',in_progress:'In progress',done:'Completed'}[task.status]||task.status)));list.append(card);return; }
       const status=selectControl('Progress',[['todo','To do'],['in_progress','In progress'],['done','Completed']],task.status); const save=element('button','secondary','Update progress');save.type='button';
       save.addEventListener('click',async()=>{save.disabled=true;try{await api('task-status',{id:task.id,status:status.select.value});await loadDashboard();notice('Task progress updated.',true);}catch(error){notice(error.message);save.disabled=false;}});card.append(status.label,save);list.append(card);
     });
@@ -300,6 +330,7 @@
   $('staff-search').addEventListener('input',renderDirectory);
   $('task-filter').addEventListener('change',renderTasks);
   $('refresh-tasks').addEventListener('click',()=>loadDashboard().catch(e=>notice(e.message)));
+  $('refresh-access').addEventListener('click',async()=>{try{await loadDashboard();notice('Your role access is up to date.',true);}catch(error){notice(error.message);}});
   $('refresh-activity').addEventListener('click',()=>loadActivity().catch(e=>notice(e.message)));
   bindForm('rank-form',async(values,form)=>{await api('rank',{name:values.name,management:values.management==='true'});form.reset();await loadDirectory();notice('Rank created. Assign it in the staff directory.',true);});
   bindForm('task-form',async(values,form)=>{await api('task',values);form.reset();await loadDashboard();notice('Task assigned.',true);});

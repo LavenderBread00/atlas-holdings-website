@@ -57,6 +57,12 @@ form>button{margin-top:22px}
 .discord-rank-guide[open] summary{margin-bottom:16px}
 #discord-rank-order{padding-left:24px;margin:20px 0;color:var(--ink);line-height:1.8;font-size:13px}
 #discord-rank-order li{padding-left:5px;margin:5px 0;overflow-wrap:anywhere}
+.rank-permissions{min-width:0;border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:20px 0}
+.rank-permissions legend{font-size:12px;font-weight:600;padding:0 6px}
+.rank-permissions .check{display:flex;align-items:flex-start;gap:10px;min-height:32px;margin:7px 0;line-height:1.6}
+.rank-permissions .check input{flex:0 0 auto;margin-top:3px}
+.access-list{padding-left:20px;font-size:13px;line-height:1.8}
+.access-list li{padding:3px 0}
 #return-login{display:inline-block;margin-top:18px}
 .check{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:400;margin-top:18px;min-height:24px}
 .check input{margin:0;width:17px;height:17px;min-height:0;flex:none;accent-color:var(--wine)}

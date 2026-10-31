@@ -33,7 +33,10 @@ const passField = value => {
 };
 const ceoTitle = 'Group Chief Executive Officer';
 const reservedOwnerName = name => ['chairman','ceo','group ceo','chief executive officer','group chief executive officer'].includes(name.trim().toLowerCase());
-const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, rank: user.role === 'chairman' ? ceoTitle : (user.rank || 'Holdings Staff'), department: user.department || '', management: user.role === 'chairman' || !!user.management });
+const permissionNames = ['view_directory','view_all_tasks','manage_tasks','manage_announcements','manage_resources'];
+const permissionColumns = permissionNames.map(name => `rp.${name} AS perm_${name}`).join(',');
+const permissionsFor = account => Object.fromEntries(permissionNames.map(name => [name, account.role === 'chairman' || !!(account['perm_' + name] ?? account.management)]));
+const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, rank: user.role === 'chairman' ? ceoTitle : (user.rank || 'Holdings Staff'), department: user.department || '', management: user.role === 'chairman' || !!user.management, permissions: permissionsFor(user) });
 
 export async function onRequest({ request, env }) {
   try {
@@ -48,7 +51,7 @@ export async function onRequest({ request, env }) {
     const setupHash = /^[a-f0-9]{64}$/.test(env.STAFF_SETUP_KEY_HASH || '') ? env.STAFF_SETUP_KEY_HASH : typeof env.STAFF_SETUP_KEY === 'string' && env.STAFF_SETUP_KEY.length >= 32 ? await digest(env.STAFF_SETUP_KEY) : null;
     const query = (sql, ...args) => db.prepare(sql).bind(...args);
     const profile = async account => {
-      const data = await query("SELECT r.name AS rank,r.management,p.department FROM staff_users u LEFT JOIN staff_profiles p ON p.user_id=u.id LEFT JOIN staff_ranks r ON r.id=COALESCE(p.rank_id,'staff') WHERE u.id=?", account.id).first();
+      const data = await query(`SELECT r.name AS rank,r.management,p.department,${permissionColumns} FROM staff_users u LEFT JOIN staff_profiles p ON p.user_id=u.id LEFT JOIN staff_ranks r ON r.id=COALESCE(p.rank_id,'staff') LEFT JOIN staff_rank_permissions rp ON rp.rank_id=r.id WHERE u.id=?`, account.id).first();
       return { ...account, ...data };
     };
     const audit = (action, detail, actor) => query('INSERT INTO staff_activity(id,actor_id,action,detail,created_at) VALUES (?,?,?,?,?)', crypto.randomUUID(), actor, action, detail, now);
@@ -141,7 +144,8 @@ export async function onRequest({ request, env }) {
     let user = await query('SELECT u.* FROM staff_users u JOIN staff_sessions s ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1', tokenHash, now).first();
     if (!user) fail('Your session has ended. Please sign in again.', 401);
     user = await profile(user);
-    const manager = user.role === 'chairman' || !!user.management;
+    const permissions = permissionsFor(user);
+    const requirePermission = name => { if (!permissions[name]) fail('Your rank does not have access to this feature. Please contact the Group CEO.', 403); };
     if (method === 'GET' && action === 'me') return response({ user: publicUser(await profile(user)) });
     if (method === 'POST') await rate('writes', 60, 5, user.id);
     if (method === 'POST' && action === 'logout') {
@@ -159,25 +163,27 @@ export async function onRequest({ request, env }) {
     if (method === 'GET' && action === 'dashboard') {
       const announcements = await query('SELECT a.id,a.title,a.body,a.created_at,u.name AS author FROM staff_announcements a JOIN staff_users u ON u.id=a.author_id ORDER BY a.created_at DESC LIMIT 100').all();
       const resources = await query('SELECT id,title,url FROM staff_resources ORDER BY created_at DESC LIMIT 100').all();
-      const tasks = await query(`SELECT t.*,u.name AS assignee FROM staff_tasks t JOIN staff_users u ON u.id=t.assignee_id ${manager ? '' : 'WHERE t.assignee_id=?'} ORDER BY CASE t.status WHEN 'done' THEN 1 ELSE 0 END, t.created_at DESC LIMIT 200`, ...(manager ? [] : [user.id])).all();
-      return response({ announcements: announcements.results, resources: resources.results, tasks: tasks.results });
+      const tasks = await query(`SELECT t.*,u.name AS assignee FROM staff_tasks t JOIN staff_users u ON u.id=t.assignee_id ${permissions.view_all_tasks ? '' : 'WHERE t.assignee_id=?'} ORDER BY CASE t.status WHEN 'done' THEN 1 ELSE 0 END, t.created_at DESC LIMIT 200`, ...(permissions.view_all_tasks ? [] : [user.id])).all();
+      return response({ user: publicUser(user), announcements: announcements.results, resources: resources.results, tasks: tasks.results });
     }
     if (method === 'POST' && action === 'task-status') {
       const id = field(body.id, 1, 100, 'Task ID');
       if (!['todo','in_progress','done'].includes(body.status)) fail('Choose a valid task status.');
       const task = await query('SELECT * FROM staff_tasks WHERE id=?', id).first();
       if (!task) fail('Task not found.', 404);
-      if (!manager && task.assignee_id !== user.id) fail('You can only update your own tasks.', 403);
+      if (!permissions.manage_tasks && task.assignee_id !== user.id) fail('You can only update your own tasks.', 403);
       await db.batch([query('UPDATE staff_tasks SET status=?,updated_at=? WHERE id=?', body.status, now, id), audit('Task status updated', task.title + ' → ' + body.status, user.id)]);
       return response({ ok: true });
     }
-    if (!manager) fail('Management access is required.', 403);
     const ownerActions = ['staff','invite','staff-access','staff-profile','rank','activity','revoke-invite'];
     if (ownerActions.includes(action) && user.role !== 'chairman') fail('Only the Group CEO can manage ranks and staff access.', 403);
     if (method === 'GET' && action === 'directory') {
+      requirePermission('view_directory');
       const result = await query("SELECT u.id,u.name,u.email,u.role,u.active,COALESCE(r.name,'Holdings Staff') AS rank,COALESCE(p.department,'') AS department,COALESCE(p.rank_id,'staff') AS rank_id,COALESCE(r.management,0) AS management FROM staff_users u LEFT JOIN staff_profiles p ON p.user_id=u.id LEFT JOIN staff_ranks r ON r.id=COALESCE(p.rank_id,'staff') ORDER BY u.name").all();
-      const ranks = await query('SELECT * FROM staff_ranks ORDER BY sort_order,name').all();
-      return response({ staff: result.results.map(person => ({ ...person, rank: person.role === 'chairman' ? ceoTitle : person.rank, management: person.role === 'chairman' ? 1 : person.management })), ranks: ranks.results.filter(rank => rank.id !== 'group-ceo' && !reservedOwnerName(rank.name)) });
+      const ranks = await query(`SELECT r.*,${permissionColumns} FROM staff_ranks r LEFT JOIN staff_rank_permissions rp ON rp.rank_id=r.id ORDER BY r.sort_order,r.name`).all();
+      const catalog = ranks.results.map(rank => ({ id:rank.id, name:rank.name, management:rank.management, sort_order:rank.sort_order, permissions:permissionsFor(rank) }));
+      const byId = new Map(catalog.map(rank => [rank.id,rank.permissions]));
+      return response({ staff: result.results.map(person => ({ ...person, rank: person.role === 'chairman' ? ceoTitle : person.rank, management: person.role === 'chairman' ? 1 : person.management, permissions: person.role === 'chairman' ? permissionsFor(person) : byId.get(person.rank_id) || permissionsFor({management:0}) })), ranks: catalog.filter(rank => rank.id !== 'group-ceo' && !reservedOwnerName(rank.name)) });
     }
     if (method === 'GET' && action === 'activity') {
       const result = await query('SELECT a.action,a.detail,a.created_at,u.name AS actor FROM staff_activity a JOIN staff_users u ON u.id=a.actor_id ORDER BY a.created_at DESC,a.rowid DESC LIMIT 100').all();
@@ -188,13 +194,23 @@ export async function onRequest({ request, env }) {
       if (typeof body.management !== 'boolean') fail('Choose rank permissions.');
       if (reservedOwnerName(name) || body.id === 'group-ceo') fail('Group Chief Executive Officer is the protected owner position.');
       const id = body.id ? field(body.id,1,100,'Rank ID') : crypto.randomUUID();
-      const old = await query('SELECT * FROM staff_ranks WHERE id=?', id).first();
+      const old = await query(`SELECT r.*,${permissionColumns} FROM staff_ranks r LEFT JOIN staff_rank_permissions rp ON rp.rank_id=r.id WHERE r.id=?`, id).first();
       if (body.id && !old) fail('Rank not found.',404);
       const duplicate = await query('SELECT id FROM staff_ranks WHERE name=? AND id<>?',name,id).first();
       if (duplicate) fail('A rank already uses this name.',409);
-      // The fallback rank cannot gain management permissions.
-      if (id === 'staff' && body.management) fail('The default staff rank must keep standard permissions.');
-      await db.batch([query('INSERT INTO staff_ranks(id,name,management,sort_order) VALUES (?,?,?,50) ON CONFLICT(id) DO UPDATE SET name=excluded.name,management=excluded.management',id,name,body.management?1:0),audit(old?'Rank updated':'Rank created',name + (body.management?' · management':' · standard'),user.id)]);
+      let nextPermissions;
+      if (body.permissions !== undefined) {
+        if (!body.permissions || typeof body.permissions !== 'object' || Array.isArray(body.permissions) || Object.keys(body.permissions).some(key => !permissionNames.includes(key)) || permissionNames.some(key => typeof body.permissions[key] !== 'boolean')) fail('Choose valid permissions for every feature.');
+        nextPermissions = Object.fromEntries(permissionNames.map(key => [key,body.permissions[key]]));
+      } else nextPermissions = old && body.management === !!old.management ? permissionsFor(old) : permissionsFor({ management:body.management });
+      if (nextPermissions.manage_tasks && (!nextPermissions.view_directory || !nextPermissions.view_all_tasks)) fail('Assigning tasks also requires the staff directory and group task view.');
+      const management = Object.values(nextPermissions).some(Boolean);
+      if (id === 'staff' && management) fail('The default staff rank must keep standard permissions.');
+      await db.batch([
+        query('INSERT INTO staff_ranks(id,name,management,sort_order) VALUES (?,?,?,500) ON CONFLICT(id) DO UPDATE SET name=excluded.name,management=excluded.management',id,name,management?1:0),
+        query('INSERT INTO staff_rank_permissions(rank_id,view_directory,view_all_tasks,manage_tasks,manage_announcements,manage_resources) VALUES (?,?,?,?,?,?) ON CONFLICT(rank_id) DO UPDATE SET view_directory=excluded.view_directory,view_all_tasks=excluded.view_all_tasks,manage_tasks=excluded.manage_tasks,manage_announcements=excluded.manage_announcements,manage_resources=excluded.manage_resources',id,...permissionNames.map(key=>nextPermissions[key]?1:0)),
+        audit(old?'Rank updated':'Rank created',name + ' · enabled: ' + (permissionNames.filter(key=>nextPermissions[key]).join(', ') || 'standard staff features'),user.id)
+      ]);
       return response({ok:true});
     }
     if (method === 'POST' && action === 'staff-profile') {
@@ -215,6 +231,7 @@ export async function onRequest({ request, env }) {
       return response({ok:true});
     }
     if (method === 'POST' && action === 'task') {
+      requirePermission('manage_tasks');
       const title = field(body.title,3,120,'Task title');
       const description = typeof body.description === 'string' ? body.description.trim() : '';
       if (description.length > 4000) fail('Task description is too long.');
@@ -249,11 +266,13 @@ export async function onRequest({ request, env }) {
       return response({ ok: true });
     }
     if (method === 'POST' && action === 'announcement') {
+      requirePermission('manage_announcements');
       const title = field(body.title, 3, 120, 'Title'), text = field(body.body, 5, 8000, 'Announcement');
       await db.batch([query('INSERT INTO staff_announcements(id,title,body,author_id,created_at) VALUES (?,?,?,?,?)', crypto.randomUUID(), title, text, user.id, now),audit('Announcement published',title,user.id)]);
       return response({ ok: true }, 201);
     }
     if (method === 'POST' && action === 'resource') {
+      requirePermission('manage_resources');
       const title = field(body.title, 2, 120, 'Title'), value = field(body.url, 8, 2000, 'Link');
       let link;
       try { link = new URL(value); } catch { fail('Enter a valid HTTPS link.'); }
@@ -264,6 +283,7 @@ export async function onRequest({ request, env }) {
     if (method === 'POST' && action === 'delete-content') {
       const id = field(body.id, 1, 100, 'Item ID');
       if (!['announcement', 'resource'].includes(body.kind)) fail('Unknown content type.');
+      requirePermission(body.kind === 'announcement' ? 'manage_announcements' : 'manage_resources');
       const table = body.kind === 'announcement' ? 'staff_announcements' : 'staff_resources';
       await db.batch([query(`DELETE FROM ${table} WHERE id=?`, id),audit('Content deleted',body.kind+' · '+id,user.id)]);
       return response({ ok: true });

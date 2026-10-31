@@ -13,6 +13,7 @@ function database() {
   sqlite.exec(readFileSync(new URL('../migrations/0003_recovery.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../migrations/0004_group_leadership.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../migrations/0005_ceo_owner.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0006_rank_permissions.sql', import.meta.url), 'utf8'));
   const wrap = (sql, args = []) => ({
     bind: (...values) => wrap(sql, values),
     first: async () => sqlite.prepare(sql).get(...args) || null,
@@ -38,6 +39,101 @@ function client(env, ip) {
     return { status: res.status, body: await res.json(), cookie: setCookie };
   };
 }
+
+test('every group rank gets its intended data and actions while CEO controls stay private', async () => {
+  const env={STAFF_DB:database(),STAFF_SETUP_KEY:'feature-test-private-setup-key-at-least-32-characters'};
+  const owner=client(env,'192.0.2.100');
+  await owner('setup',{setupKey:env.STAFF_SETUP_KEY,email:'owner@example.test',name:'Owner',password:'owner test password'});
+  const keys=['view_directory','view_all_tasks','manage_tasks','manage_announcements','manage_resources'];
+  const roles=[
+    ['group-cfo',[1,1,1,0,1]],['group-coo',[1,1,1,1,1]],['group-cto',[1,1,1,0,1]],
+    ['group-cso',[1,1,1,1,1]],['group-ccso',[1,1,1,1,1]],
+    ['group-company-secretary',[1,1,0,1,1]],['deputy-company-secretary',[1,0,0,0,1]],
+    ['managing-director',[1,1,1,1,1]],['staff',[0,0,0,0,0]]
+  ];
+  const accounts=[];
+  for(let i=0;i<roles.length;i++) {
+    const [rank,values]=roles[i],call=client(env,'192.0.2.'+(110+i));
+    const invitation=await owner('invite',{email:'role'+i+'@example.test',name:'Role '+i});
+    const token=new URLSearchParams(new URL(invitation.body.link).hash.slice(1)).get('invite');
+    const joined=await call('accept-invite',{token,password:'role test password',permissions:Object.fromEntries(keys.map(key=>[key,true]))});
+    await owner('staff-profile',{id:joined.body.user.id,rank_id:rank});
+    await owner('task',{title:'Assigned role task '+i,description:'Own task for this rank.',assignee_id:joined.body.user.id,priority:'normal'});
+    accounts.push({rank,call,id:joined.body.user.id,expected:Object.fromEntries(keys.map((key,j)=>[key,!!values[j]]))});
+  }
+  await owner('announcement',{title:'Shared group update',body:'All staff can read shared announcements.'});
+  await owner('resource',{title:'Shared resource',url:'https://example.test/group'});
+  const allTasks=(await owner('dashboard')).body.tasks;
+  let groupTaskCount=accounts.length;
+  for(const account of accounts) {
+    const {rank,call,id,expected}=account;
+    const me=(await call('me')).body.user;
+    assert.deepEqual(me.permissions,expected,rank+' permissions');
+    const dashboard=(await call('dashboard')).body;
+    assert.deepEqual(dashboard.user.permissions,expected,rank+' dashboard access refresh');
+    assert.ok(dashboard.announcements.some(item=>item.title==='Shared group update'));
+    assert.ok(dashboard.resources.some(item=>item.title==='Shared resource'));
+    assert.equal(dashboard.tasks.length,expected.view_all_tasks?groupTaskCount:1,rank+' task visibility');
+    const own=allTasks.find(task=>task.assignee_id===id), other=allTasks.find(task=>task.assignee_id!==id);
+    assert.equal((await call('task-status',{id:own.id,status:'in_progress'})).status,200,rank+' own task');
+    assert.equal((await call('task-status',{id:other.id,status:'done'})).status,expected.manage_tasks?200:403,rank+' other task');
+    assert.equal((await call('directory')).status,expected.view_directory?200:403,rank+' directory');
+    assert.equal((await call('task',{title:'Assigned by '+rank,assignee_id:id,priority:'normal'})).status,expected.manage_tasks?201:403,rank+' assign');
+    if(expected.manage_tasks)groupTaskCount++;
+    assert.equal((await call('announcement',{title:'Update from '+rank,body:'A valid group update for this test.'})).status,expected.manage_announcements?201:403,rank+' publish');
+    assert.equal((await call('resource',{title:'Resource from '+rank,url:'https://example.test/resource'})).status,expected.manage_resources?201:403,rank+' resource');
+    for(const kind of ['announcement','resource']) assert.equal((await call('delete-content',{kind,id:'no-such-content'})).status,expected[kind==='announcement'?'manage_announcements':'manage_resources']?200:403,rank+' delete '+kind);
+    for(const action of ['staff','activity']) assert.equal((await call(action)).status,403,rank+' must not access '+action);
+    assert.equal((await call('rank',{id:rank,name:'Unauthorized edit',management:true,permissions:Object.fromEntries(keys.map(key=>[key,true]))})).status,403);
+  }
+});
+
+test('feature permission changes apply to existing sessions and legacy rank edits preserve custom access', async () => {
+  const env={STAFF_DB:database(),STAFF_SETUP_KEY:'feature-test-private-setup-key-at-least-32-characters'};
+  const owner=client(env,'192.0.2.130'),staff=client(env,'192.0.2.131');
+  const created=await owner('setup',{setupKey:env.STAFF_SETUP_KEY,email:'owner@example.test',name:'Owner',password:'owner password'});
+  const invitation=await owner('invite',{email:'worker@example.test',name:'Worker'});
+  const token=new URLSearchParams(new URL(invitation.body.link).hash.slice(1)).get('invite');
+  const joined=await staff('accept-invite',{token,password:'worker password'});
+  await owner('staff-profile',{id:joined.body.user.id,rank_id:'group-coo'});
+  await owner('task',{title:'Private owner assignment',assignee_id:created.body.user.id,priority:'normal'});
+  const permissions={view_directory:true,view_all_tasks:true,manage_tasks:false,manage_announcements:false,manage_resources:false};
+  assert.equal((await owner('rank',{id:'group-coo',name:'Group Chief Operating Officer',management:true,permissions})).status,200);
+  assert.equal((await staff('me')).body.user.management,true);
+  assert.deepEqual((await staff('me')).body.user.permissions,permissions);
+  assert.equal((await staff('announcement',{title:'Blocked publication',body:'This must never be published.'})).status,403);
+  assert.equal((await staff('dashboard')).body.tasks.length,1);
+  assert.equal((await owner('rank',{id:'group-coo',name:'Operations Lead',management:true})).status,200);
+  assert.deepEqual((await staff('me')).body.user.permissions,permissions,'legacy rename preserves feature access');
+  assert.equal((await owner('rank',{id:'group-coo',name:'Operations Lead',management:true,permissions:{...permissions,manage_tasks:true,view_directory:false}})).status,400);
+  assert.equal((await owner('rank',{id:'group-coo',name:'Operations Lead',management:true,permissions:{...permissions,unexpected:true}})).status,400);
+  assert.equal((await owner('rank',{id:'staff',name:'Holdings Staff',management:true,permissions})).status,400);
+  assert.equal((await owner('rank',{id:'group-coo',name:'Operations Lead',management:false})).status,200);
+  const refreshed=(await staff('dashboard')).body;
+  assert.equal(refreshed.tasks.length,0);
+  assert.equal(Object.values(refreshed.user.permissions).some(Boolean),false);
+  assert.equal((await staff('directory')).status,403);
+  assert.equal((await staff('me')).body.user.id,joined.body.user.id,'session remains valid with reduced access');
+});
+
+test('role permission migration keeps saved settings and tolerates repeated legacy cleanup', () => {
+  const db=new DatabaseSync(':memory:');
+  const migration=file=>readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8');
+  db.exec(migration('0001_staff.sql'));db.exec(migration('0002_management.sql'));
+  db.exec("INSERT INTO staff_users(id,email,name,password_hash,salt,role,created_at) VALUES ('legacy','legacy@example.test','Legacy','original-hash','original-salt','staff',1)");
+  db.exec("INSERT INTO staff_profiles(user_id,rank_id,department) VALUES ('legacy','manager','Operations')");
+  db.exec("INSERT INTO staff_ranks(id,name,management,sort_order) VALUES ('custom','Custom Manager',1,500)");
+  db.exec(migration('0004_group_leadership.sql'));db.exec(migration('0005_ceo_owner.sql'));db.exec(migration('0006_rank_permissions.sql'));
+  assert.equal(db.prepare("SELECT manage_announcements FROM staff_rank_permissions WHERE rank_id='custom'").get().manage_announcements,1);
+  assert.equal(db.prepare("SELECT manage_announcements FROM staff_rank_permissions WHERE rank_id='group-cfo'").get().manage_announcements,0);
+  db.exec("UPDATE staff_rank_permissions SET manage_announcements=1,manage_resources=0 WHERE rank_id='group-cfo'");
+  db.exec("DELETE FROM staff_profiles WHERE user_id='legacy'");
+  db.exec(migration('0002_management.sql'));db.exec(migration('0004_group_leadership.sql'));db.exec(migration('0005_ceo_owner.sql'));db.exec(migration('0006_rank_permissions.sql'));
+  const saved=db.prepare("SELECT * FROM staff_rank_permissions WHERE rank_id='group-cfo'").get();
+  assert.equal(saved.manage_announcements,1);assert.equal(saved.manage_resources,0);
+  assert.equal(db.prepare("SELECT rank_id FROM staff_rank_permissions WHERE rank_id='manager'").get(),undefined);
+  assert.equal(db.prepare("SELECT password_hash FROM staff_users WHERE id='legacy'").get().password_hash,'original-hash');
+});
 
 test('a newly accepted deployment tolerates brief registration delay without hiding permission errors', async () => {
   let reads=0, waits=0;
