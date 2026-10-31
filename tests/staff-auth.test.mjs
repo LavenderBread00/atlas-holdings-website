@@ -9,6 +9,7 @@ function database() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../migrations/0001_staff.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../migrations/0002_management.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0003_recovery.sql', import.meta.url), 'utf8'));
   const wrap = (sql, args = []) => ({
     bind: (...values) => wrap(sql, values),
     first: async () => sqlite.prepare(sql).get(...args) || null,
@@ -34,6 +35,65 @@ function client(env, ip) {
     return { status: res.status, body: await res.json(), cookie: setCookie };
   };
 }
+
+test('private recovery links preserve accounts, reject replay and revoke old sessions', async () => {
+  const db = database(), env = { STAFF_DB: db, STAFF_SETUP_KEY: 'recovery-test-setup-key-at-least-32-characters' };
+  const chair = client(env, '192.0.2.201'), otherSession = client(env, '192.0.2.202'), recover = client(env, '192.0.2.203');
+  const email = 'chairman@example.com', oldPassword = 'old test password';
+  const created = await chair('setup', { setupKey: env.STAFF_SETUP_KEY, email, name: 'Chairman', password: oldPassword });
+  const id = created.body.user.id;
+  await otherSession('login', { email, password: oldPassword, remember: true });
+  await chair('announcement', { title: 'Preserved update', body: 'Our group announcement must survive recovery.' });
+  const token = 'a3'.repeat(32), hash = createHash('sha256').update(token).digest('hex');
+  await db.prepare('INSERT INTO staff_password_resets(token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)').bind(hash, id, Date.now() + 60000, Date.now()).run();
+  assert.equal((await recover('check-reset', { token: hash })).status, 410, 'the stored hash cannot be used as a credential');
+  assert.equal((await recover('check-reset', { token: 'invalid' })).status, 410);
+  const check = await recover('check-reset', { token });
+  assert.equal(check.status, 200);
+  assert.equal(check.cookie, null);
+  assert.equal((await db.prepare('SELECT used_at FROM staff_password_resets WHERE user_id=?').bind(id).first()).used_at, null);
+  assert.equal((await recover('reset-password', { token, password: 'short' })).status, 400);
+  assert.equal((await recover('reset-password', { token, password: 'new test password' }, { origin: 'https://evil.example' })).status, 403);
+  assert.equal((await chair('me')).status, 200, 'checking a link or rejecting a password must not revoke the current session');
+  const reset = await recover('reset-password', { token, password: 'new test password', user_id: 'ignored', role: 'staff' });
+  assert.equal(reset.status, 200);
+  assert.match(reset.cookie, /Max-Age=0/);
+  assert.equal((await chair('me')).status, 401);
+  assert.equal((await otherSession('me')).status, 401);
+  assert.equal((await recover('reset-password', { token, password: 'another test password' })).status, 410);
+  assert.equal((await recover('check-reset', { token })).status, 410);
+  const login = client(env, '192.0.2.204');
+  assert.equal((await login('login', { email, password: oldPassword })).status, 401);
+  const signedIn = await login('login', { email, password: 'new test password' });
+  assert.equal(signedIn.status, 200);
+  assert.equal(signedIn.body.user.id, id);
+  assert.equal(signedIn.body.user.role, 'chairman');
+  assert.equal((await login('dashboard')).body.announcements[0].title, 'Preserved update');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS total FROM staff_activity WHERE action='Password recovered'").first()).total, 1);
+});
+
+test('recovery rejects expired and suspended accounts and consumes a token once under concurrent requests', async () => {
+  const db = database(), env = { STAFF_DB: db, STAFF_SETUP_KEY: 'recovery-test-setup-key-at-least-32-characters' };
+  const chair = client(env, '192.0.2.210'), recover = client(env, '192.0.2.211');
+  const created = await chair('setup', { setupKey: env.STAFF_SETUP_KEY, email: 'chairman@example.com', name: 'Chairman', password: 'old password' });
+  const id = created.body.user.id, token = 'b4'.repeat(32), hash = createHash('sha256').update(token).digest('hex');
+  await db.prepare('INSERT INTO staff_password_resets(token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)').bind(hash, id, Date.now() - 1000, Date.now() - 2000).run();
+  assert.equal((await recover('reset-password', { token, password: 'new password' })).status, 410);
+  await db.prepare('UPDATE staff_password_resets SET expires_at=?').bind(Date.now() + 60000).run();
+  await db.prepare('UPDATE staff_users SET active=0 WHERE id=?').bind(id).run();
+  assert.equal((await recover('reset-password', { token, password: 'new password' })).status, 410);
+  await db.prepare('UPDATE staff_users SET active=1 WHERE id=?').bind(id).run();
+  const results = await Promise.all([
+    recover('reset-password', { token, password: 'first new password' }),
+    client(env, '192.0.2.212')('reset-password', { token, password: 'second new password' })
+  ]);
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 410]);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS total FROM staff_activity WHERE action='Password recovered'").first()).total, 1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS total FROM staff_sessions WHERE user_id=?').bind(id).first()).total, 0);
+  const limited = client(env, '192.0.2.213');
+  for (let i = 0; i < 15; i++) assert.equal((await limited('check-reset', { token: '0'.repeat(64) })).status, 410);
+  assert.equal((await limited('check-reset', { token: '0'.repeat(64) })).status, 429);
+});
 
 test('hashed one-time setup keys cannot be used as bearer setup credentials', async () => {
   const key = 'private-test-setup-key-at-least-32-characters';
@@ -198,3 +258,4 @@ test('management migration is additive and safe to re-run', () => {
  assert.equal(db.prepare('SELECT count(*) AS n FROM staff_ranks').get().n,5);
  assert.equal(db.prepare('SELECT password_hash FROM staff_users').get().password_hash,'hash');
 });
+

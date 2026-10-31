@@ -74,6 +74,27 @@ export async function onRequest({ request, env }) {
       await query('INSERT INTO staff_sessions(token_hash,user_id,expires_at) VALUES (?,?,?)', await digest(token), id, now + age * 1000).run();
       return `${cookieName}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${age}`;
     };
+    if (method === 'POST' && ['check-reset', 'reset-password'].includes(action)) {
+      await rate('recovery', 15, 15);
+      const invalid = () => fail('This recovery link has expired or has already been used. Ask your administrator for a new link.', 410);
+      if (typeof body.token !== 'string' || !/^[a-f0-9]{64}$/.test(body.token)) invalid();
+      const resetHash = await digest(body.token);
+      const reset = await query('SELECT r.user_id FROM staff_password_resets r JOIN staff_users u ON u.id=r.user_id WHERE r.token_hash=? AND r.used_at IS NULL AND r.expires_at>? AND u.active=1', resetHash, now).first();
+      if (!reset) invalid();
+      if (action === 'check-reset') return response({ ready: true });
+      const salt = random(), hash = await passwordHash(passField(body.password), salt);
+      // The token stays unconsumed until all credential, session and audit changes
+      // commit together. The conditional update prevents concurrent token reuse.
+      const valid = 'EXISTS (SELECT 1 FROM staff_password_resets r JOIN staff_users u ON u.id=r.user_id WHERE r.token_hash=? AND r.used_at IS NULL AND r.expires_at>? AND u.active=1)';
+      const changed = await db.batch([
+        query('UPDATE staff_users SET password_hash=?,salt=? WHERE id=? AND active=1 AND ' + valid, hash, salt, reset.user_id, resetHash, now),
+        query('DELETE FROM staff_sessions WHERE user_id=? AND ' + valid, reset.user_id, resetHash, now),
+        query('INSERT INTO staff_activity(id,actor_id,action,detail,created_at) SELECT ?,user_id,?,?,? FROM staff_password_resets WHERE token_hash=? AND used_at IS NULL AND expires_at>?', crypto.randomUUID(), 'Password recovered', 'Private recovery link used; previous sessions signed out.', now, resetHash, now),
+        query('UPDATE staff_password_resets SET used_at=? WHERE token_hash=? AND used_at IS NULL AND expires_at>?', now, resetHash, now)
+      ]);
+      if (Number(changed[0]?.meta?.changes ?? changed[0]?.changes) !== 1) invalid();
+      return response({ ok: true }, 200, { 'Set-Cookie': `${cookieName}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0` });
+    }
     if (method === 'POST' && ['setup', 'login', 'accept-invite'].includes(action)) {
       await rate('auth', 25, 15);
       if (action === 'setup') {
@@ -246,3 +267,4 @@ export async function onRequest({ request, env }) {
     return response({ error: error.status ? error.message : 'The staff service is unavailable. Please try again or contact the chairman.' }, error.status || 503);
   }
 }
+

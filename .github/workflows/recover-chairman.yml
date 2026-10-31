@@ -1,0 +1,43 @@
+name: Recover Holdings Chairman Account
+on:
+  push:
+    branches: [main]
+    paths: ['.github/recovery/chairman.json']
+  workflow_dispatch:
+    inputs:
+      email:
+        description: Chairman account email
+        required: true
+        type: string
+      token_hash:
+        description: SHA-256 hash of a privately generated 32-byte random token (never the raw token)
+        required: true
+        type: string
+      expires_at:
+        description: Expiry as Unix milliseconds, no more than 24 hours ahead
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: holdings-chairman-recovery
+  cancel-in-progress: false
+jobs:
+  recover:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify authentication and recovery protections
+        run: node --test tests/staff-auth.test.mjs
+      - name: Prepare private one-use chairman recovery
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RECOVERY_EMAIL: ${{ inputs.email }}
+          RECOVERY_TOKEN_HASH: ${{ inputs.token_hash }}
+          RECOVERY_EXPIRES_AT: ${{ inputs.expires_at }}
+        run: node scripts/recover-chairman.mjs

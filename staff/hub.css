@@ -50,7 +50,10 @@ button{border:1px solid transparent;border-radius:10px;background:var(--wine);co
 button:hover{background:var(--deep)}
 button:disabled{opacity:.55;cursor:wait}
 form>button{margin-top:22px}
-#login-form>button,#invite-form>button,#setup-form>button{width:100%;display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:48px;margin-top:25px}
+#login-form>button,#invite-form>button,#setup-form>button,#reset-form>button{width:100%;display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:48px;margin-top:25px}
+#forgot-password{margin-top:12px;min-height:36px}
+#recovery-help{margin:24px 0}
+#return-login{display:inline-block;margin-top:18px}
 .check{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:400;margin-top:18px;min-height:24px}
 .check input{margin:0;width:17px;height:17px;min-height:0;flex:none;accent-color:var(--wine)}
 .password-field{position:relative}

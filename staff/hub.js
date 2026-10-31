@@ -33,8 +33,10 @@
   let user = null, dashboard = null, directory = null;
   const isManager = () => user?.role === 'chairman' || user?.management === true;
   const rankName = person => person.role === 'chairman' ? 'Chairman' : person.rank || 'Holdings Staff';
-  const inviteToken = new URLSearchParams(location.hash.slice(1)).get('invite');
-  if (inviteToken) history.replaceState(null, '', location.pathname);
+  const authParams = new URLSearchParams(location.hash.slice(1));
+  const inviteToken = authParams.get('invite');
+  let resetToken = authParams.get('reset');
+  if (inviteToken || resetToken) history.replaceState(null, '', location.pathname);
   $('year').textContent = new Date().getFullYear();
   function notice(message, success = false) {
     $('notice').textContent = message;
@@ -62,9 +64,12 @@
   function showAuth(mode = 'login') {
     document.body.classList.remove('is-signed-in');
     $('loading').hidden = true; $('workspace').hidden = true; $('auth').hidden = false;
-    ['login', 'setup', 'invite'].forEach(value => { $(value + '-form').hidden = mode !== value; });
-    $('auth-title').textContent = mode === 'invite' ? 'Join the group.' : mode === 'setup' ? 'Set up your hub.' : 'Welcome back.';
-    $('auth-description').textContent = mode === 'invite' ? 'Create your individual Altaş Holdings staff account.' : mode === 'setup' ? 'Create the first chairman account.' : 'Sign in with your Altaş Holdings staff account.';
+    ['login', 'setup', 'invite', 'reset'].forEach(value => { $(value + '-form').hidden = mode !== value; });
+    $('recovery-help').hidden = mode !== 'recovery-help';
+    $('forgot-password').hidden = mode !== 'login';
+    $('auth-title').textContent = mode === 'reset' ? 'Choose a new password.' : mode === 'recovery-help' ? 'Let’s get you back in.' : mode === 'invite' ? 'Join the group.' : mode === 'setup' ? 'Set up your hub.' : 'Welcome back.';
+    $('auth-description').textContent = mode === 'reset' ? 'Your account and work will stay exactly where you left them.' : mode === 'recovery-help' ? 'Recover access with a private, one-use link.' : mode === 'invite' ? 'Create your individual Altaş Holdings staff account.' : mode === 'setup' ? 'Create the first chairman account.' : 'Sign in with your Altaş Holdings staff account.';
+    $('auth-foot').hidden = ['reset', 'recovery-help'].includes(mode);
     $('return-login').hidden = mode === 'login';
     $('setup-toggle').hidden = mode !== 'login' || !$('setup-toggle').dataset.available;
   }
@@ -110,14 +115,21 @@
       const form = event.currentTarget, button = form.querySelector('[type=submit]');
       const values = Object.fromEntries(new FormData(form));
       if ('confirm' in values && values.password !== values.confirm) { notice('The passwords do not match.'); return; }
-      button.disabled = true; button.setAttribute('aria-busy', 'true'); const originalText = button.textContent; button.textContent = id === 'login-form' ? 'Signing in…' : 'Saving…';
+      button.disabled = true; button.setAttribute('aria-busy', 'true'); const originalChildren = [...button.childNodes].map(node => node.cloneNode(true)); button.textContent = id === 'login-form' ? 'Signing in…' : 'Saving…';
       try { await callback(values, form); } catch (error) { notice(error.message); }
-      finally { button.disabled = false; button.removeAttribute('aria-busy'); button.textContent = originalText; }
+      finally { button.disabled = false; button.removeAttribute('aria-busy'); button.replaceChildren(...originalChildren); }
     });
   }
   bindForm('login-form', async (values, form) => { const result = await api('login', { ...values, remember: values.remember === 'on' }); form.reset(); user = result.user; await showWorkspace(); });
   bindForm('setup-form', async (values, form) => { const result = await api('setup', values); form.reset(); user = result.user; await showWorkspace(); });
   bindForm('invite-form', async (values, form) => { const result = await api('accept-invite', { password: values.password, token: inviteToken }); form.reset(); user = result.user; await showWorkspace(); });
+  bindForm('reset-form', async (values, form) => {
+    await api('reset-password', { password: values.password, token: resetToken });
+    form.reset(); resetToken = null; user = null; showAuth();
+    $('login-form').querySelector('[name=password]').focus();
+    notice('Your password has been updated. Sign in with your email and new password.', true);
+  });
+  $('forgot-password').addEventListener('click', () => { notice(''); showAuth('recovery-help'); });
   $('setup-toggle').addEventListener('click', () => showAuth('setup'));
   $('logout').addEventListener('click', async () => {
     try { await api('logout', {}); location.replace('/staff/'); } catch (error) { notice(error.message); }
@@ -274,6 +286,12 @@
     try {
       const status = await api('status');
       $('setup-toggle').dataset.available = status.setup ? 'true' : '';
+      if (resetToken) {
+        showAuth('reset');
+        try { await api('check-reset', { token: resetToken }); }
+        catch (error) { $('reset-form').querySelector('[type=submit]').disabled = true; notice(error.message); }
+        return;
+      }
       if (inviteToken) { showAuth('invite'); return; }
       try { const result = await api('me'); user = result.user; }
       catch (error) { if (!error.message.includes('sign in')) throw error; }

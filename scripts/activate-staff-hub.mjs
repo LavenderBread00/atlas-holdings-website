@@ -38,6 +38,7 @@ const current = project.deployment_configs?.production || {};
 if (current.d1_databases?.STAFF_DB && current.d1_databases.STAFF_DB.id !== id) throw new Error('STAFF_DB already points to another database; refusing to replace it.');
 await query(id, await readFile('migrations/0001_staff.sql', 'utf8'));
 await query(id, await readFile('migrations/0002_management.sql', 'utf8'));
+await query(id, await readFile('migrations/0003_recovery.sql', 'utf8'));
 const managementSchema = await query(id, "SELECT COUNT(*) AS total FROM staff_ranks");
 if (Number(managementSchema[0]?.results?.[0]?.total) < 5) throw new Error('Management schema verification failed.');
 console.log('Altaş staff database created or verified; schema applied.');
@@ -76,3 +77,4 @@ for (let attempt = 0; attempt < 60; attempt++) {
   await pause(5000);
 }
 throw new Error('Deployment is still pending. Check the Cloudflare Pages deployment status.');
+
