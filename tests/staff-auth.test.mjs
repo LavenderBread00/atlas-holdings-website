@@ -10,6 +10,7 @@ function database() {
   sqlite.exec(readFileSync(new URL('../migrations/0001_staff.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../migrations/0002_management.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../migrations/0003_recovery.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0004_group_leadership.sql', import.meta.url), 'utf8'));
   const wrap = (sql, args = []) => ({
     bind: (...values) => wrap(sql, values),
     first: async () => sqlite.prepare(sql).get(...args) || null,
@@ -204,7 +205,7 @@ test('ranks, delegated management, task privacy, audit history and live demotion
   assert.equal((await staff('directory')).status,403);
   assert.equal((await chair('staff-profile',{id:owner.body.user.id,rank_id:'trainee'})).status,404);
   assert.equal((await chair('staff-profile',{id:boss.id,rank_id:'missing'})).status,404);
-  assert.equal((await chair('staff-profile',{id:boss.id,rank_id:'manager',department:'Operations'})).status,200);
+  assert.equal((await chair('staff-profile',{id:boss.id,rank_id:'group-coo',department:'Operations'})).status,200);
   assert.equal((await manager('me')).body.user.management,true);
   assert.equal((await manager('me')).body.user.department,'Operations');
   assert.equal((await manager('directory')).body.staff.length,4);
@@ -235,7 +236,7 @@ test('ranks, delegated management, task privacy, audit history and live demotion
   assert.equal((await staff('me')).body.user.management,true);
   assert.equal((await chair('rank',{id:lead.id,name:'Digital Lead',management:false})).status,200);
   assert.equal((await staff('directory')).status,403);
-  assert.equal((await chair('staff-profile',{id:boss.id,rank_id:'trainee'})).status,200);
+  assert.equal((await chair('staff-profile',{id:boss.id,rank_id:'staff'})).status,200);
   assert.equal((await manager('announcement',{title:'Blocked now',body:'Should not be published.'})).status,403);
   const invitation=await chair('invite',{name:'Revoke Test',email:'revoke@example.com'});
   assert.equal((await chair('revoke-invite',{email:'revoke@example.com'})).status,200);
@@ -248,6 +249,37 @@ test('ranks, delegated management, task privacy, audit history and live demotion
   assert(log.every(a=>!JSON.stringify(a).includes(token)));
   assert.equal((await chair('staff-access',{id:colleague.id,active:false})).status,200);
   assert.equal((await other('me')).status,401);
+});
+
+test('group leadership migration preserves people, assigned legacy ranks and custom permissions', () => {
+ const db=new DatabaseSync(':memory:');
+ const migration = file => readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8');
+ db.exec(migration('0001_staff.sql'));
+ db.exec(migration('0002_management.sql'));
+ db.exec("INSERT INTO staff_users(id,email,name,password_hash,salt,role,created_at) VALUES ('existing-manager','manager@example.test','Existing manager','hash','salt','staff',1),('existing-staff','staff@example.test','Existing staff','hash','salt','staff',1)");
+ db.exec("INSERT INTO staff_profiles(user_id,rank_id,department) VALUES ('existing-manager','manager','Operations'),('existing-staff','staff','Support')");
+ db.exec("INSERT INTO staff_ranks(id,name,management,sort_order) VALUES ('custom','Custom Position',0,500)");
+ db.exec("UPDATE staff_ranks SET name='Academy' WHERE id='trainee'");
+ const sql=migration('0004_group_leadership.sql');db.exec(sql);
+ const leadership=db.prepare('SELECT name FROM staff_ranks WHERE sort_order<100 AND id LIKE ? ORDER BY sort_order').all('group-%').map(r=>r.name);
+ assert.deepEqual(leadership,['Group Chief Executive Officer','Group Chief Financial Officer','Group Chief Operating Officer','Group Chief Technology Officer','Group Chief Strategy Officer','Group Chief Corporate Services Officer','Group Company Secretary']);
+ assert.equal(db.prepare("SELECT name FROM staff_ranks WHERE id='deputy-company-secretary'").get().name,'Deputy Company Secretary');
+ assert.equal(db.prepare("SELECT name FROM staff_ranks WHERE id='managing-director'").get().name,'Managing Director');
+ assert.equal(db.prepare("SELECT rank_id FROM staff_profiles WHERE user_id='existing-manager'").get().rank_id,'manager');
+ assert.equal(db.prepare("SELECT management FROM staff_ranks WHERE id='manager'").get().management,1);
+ assert.equal(db.prepare("SELECT rank_id FROM staff_profiles WHERE user_id='existing-staff'").get().rank_id,'staff');
+ assert.equal(db.prepare("SELECT management FROM staff_ranks WHERE id='staff'").get().management,0);
+ assert.equal(db.prepare("SELECT name FROM staff_ranks WHERE id='trainee'").get().name,'Academy');
+ assert.equal(db.prepare("SELECT name FROM staff_ranks WHERE id='custom'").get().name,'Custom Position');
+ assert.equal(db.prepare("SELECT id FROM staff_ranks WHERE id='director'").get(),undefined);
+ assert.equal(db.prepare("SELECT id FROM staff_ranks WHERE id='supervisor'").get(),undefined);
+ db.exec("UPDATE staff_ranks SET management=0,name='Custom executive title' WHERE id='group-ceo'");
+ db.exec(migration('0002_management.sql'));db.exec(sql);db.exec(sql);
+ assert.equal(db.prepare("SELECT management FROM staff_ranks WHERE id='group-ceo'").get().management,0);
+ assert.equal(db.prepare("SELECT name FROM staff_ranks WHERE id='group-ceo'").get().name,'Custom executive title');
+ assert.equal(db.prepare("SELECT id FROM staff_ranks WHERE id='director'").get(),undefined);
+ assert.equal(db.prepare('SELECT COUNT(*) AS total FROM staff_users').get().total,2);
+ assert.equal(db.prepare("SELECT password_hash FROM staff_users WHERE id='existing-manager'").get().password_hash,'hash');
 });
 
 test('management migration is additive and safe to re-run', () => {

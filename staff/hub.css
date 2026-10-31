@@ -53,6 +53,10 @@ form>button{margin-top:22px}
 #login-form>button,#invite-form>button,#setup-form>button,#reset-form>button{width:100%;display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:48px;margin-top:25px}
 #forgot-password{margin-top:12px;min-height:36px}
 #recovery-help{margin:24px 0}
+.discord-rank-guide summary{font-weight:600;font-size:16px;cursor:pointer;min-height:24px}
+.discord-rank-guide[open] summary{margin-bottom:16px}
+#discord-rank-order{padding-left:24px;margin:20px 0;color:var(--ink);line-height:1.8;font-size:13px}
+#discord-rank-order li{padding-left:5px;margin:5px 0;overflow-wrap:anywhere}
 #return-login{display:inline-block;margin-top:18px}
 .check{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:400;margin-top:18px;min-height:24px}
 .check input{margin:0;width:17px;height:17px;min-height:0;flex:none;accent-color:var(--wine)}

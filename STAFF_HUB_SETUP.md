@@ -4,7 +4,7 @@ The staff hub uses its own D1 database, accounts and cookies. It does not accept
 
 ## Activate on the existing Cloudflare Pages project
 
-1. Create a D1 database named `altas-holdings-staff` in Cloudflare. In its console, execute `migrations/0001_staff.sql`, `migrations/0002_management.sql` and `migrations/0003_recovery.sql` in order. They are additive and safe to re-run. The activation workflow applies them automatically.
+1. Create a D1 database named `altas-holdings-staff` in Cloudflare. In its console, execute migrations `0001_staff.sql` through `0004_group_leadership.sql` in order. They preserve existing accounts and are safe to re-run. The activation workflow applies them automatically.
 2. In the existing Pages project's Settings → Bindings, add a D1 binding named **STAFF_DB**, pointing to that database. Set the production binding; use a different database for previews if desired.
 3. Add an encrypted Pages environment variable named **STAFF_SETUP_KEY**, with a randomly generated secret at least 32 characters long. Never commit the key. Keep it private until the chairman account is created.
 4. Redeploy the Pages project so the binding and variable apply. Keep the existing root output directory and no build command. The Pages Git build must deploy the repository's `functions` directory; a dashboard drag-and-drop upload alone does not deploy Functions.
@@ -35,7 +35,11 @@ Run `node --test tests/staff-auth.test.mjs` from the repository root. These test
 
 ## Ranks and management tools
 
-In **Ranks & permissions**, the chairman can create or rename ranks and choose Standard staff or Management permissions. The Chairman rank is protected; the default staff rank cannot gain management permissions. Existing accounts start as Holdings Staff, and no existing staff member is automatically promoted. Default ranks are Group Director and Group Manager (management), and Supervisor, Holdings Staff and Trainee (standard).
+In **Ranks & permissions**, the chairman can create or rename ranks and choose Standard staff or Management permissions. Chairman is the protected owner rank. The default Holdings Staff rank cannot gain management permissions. New accounts start as Holdings Staff, and no existing staff member is automatically promoted.
+
+The default group hierarchy is Chairman, Group Chief Executive Officer, Group Chief Financial Officer, Group Chief Operating Officer, Group Chief Technology Officer, Group Chief Strategy Officer, Group Chief Corporate Services Officer, Group Company Secretary, Deputy Company Secretary, Managing Director, then Holdings Staff. The nine leadership positions start with Management permissions and are unassigned until the chairman chooses staff. They do not grant chairman-only controls. The new migration replaces only unused, untouched generic rank definitions; assigned or renamed legacy ranks and custom ranks retain their existing assignments and permissions. Rerunning it preserves later permission edits.
+
+Expand **Discord role order** in the ranks screen to view and copy the current website hierarchy. Discord role names do not synchronize account access. Subsidiary-affiliation tags (such as Corendon Airlines Roblox), community roles and bots belong below the staff hierarchy and are not Holdings staff ranks. No external group's company tags are added as Altaş subsidiaries.
 
 Use **Staff directory** to search by name, email, rank or department and assign a rank and department to an existing account. Invitations initially create a standard staff account. Assign a rank after the invitation is accepted. Rank permissions are checked on every authenticated request; demotion takes effect even in existing sessions. Refresh the portal to update its visible menus and badge.
 

@@ -2,6 +2,17 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const tabLabels = { overview: 'Overview', tasks: 'Tasks & assignments', announcements: 'Announcements', resources: 'Documents & links', directory: 'Staff directory', team: 'Staff management', ranks: 'Ranks & permissions', activity: 'Activity log', account: 'My account' };
+  const groupPositions = [
+    ['group-ceo', 'Group Chief Executive Officer'],
+    ['group-cfo', 'Group Chief Financial Officer'],
+    ['group-coo', 'Group Chief Operating Officer'],
+    ['group-cto', 'Group Chief Technology Officer'],
+    ['group-cso', 'Group Chief Strategy Officer'],
+    ['group-ccso', 'Group Chief Corporate Services Officer'],
+    ['group-company-secretary', 'Group Company Secretary'],
+    ['deputy-company-secretary', 'Deputy Company Secretary'],
+    ['managing-director', 'Managing Director']
+  ];
   const iconPaths = {
     overview: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
     tasks: 'M9 4h6 M9 3h6v4H9z M8 5H5v16h14V5h-3 M8 12l2 2 5-5 M8 18h7',
@@ -247,8 +258,12 @@
   function renderRanks() {
     if(!directory || user.role!=='chairman')return;
     const list=$('ranks-list');list.replaceChildren();
+    const order = rank => { const index = groupPositions.findIndex(([id,name]) => rank.id === id || rank.name.toLowerCase() === name.toLowerCase()); return index < 0 ? 100 : index; };
+    const ranks = [...directory.ranks].sort((a,b) => order(a) - order(b) || (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
+    const hierarchy = $('discord-rank-order');hierarchy.replaceChildren(element('li', '', 'Chairman'));
+    ranks.forEach(rank => hierarchy.append(element('li', '', rank.name)));
     const chairman=element('article','panel');chairman.append(element('h2','','Chairman'),element('p','','Owner rank · protected · full control'));list.append(chairman);
-    directory.ranks.forEach(rank=>{
+    ranks.forEach(rank=>{
       const form=element('form','panel'), title=element('h2','',rank.name), label=element('label','','Rank name'), name=element('input');name.value=rank.name;name.required=true;name.minLength=2;name.maxLength=60;label.append(name);
       const permission=selectControl('Portal permissions',[['false','Standard staff'],['true','Management']],String(!!rank.management));
       if(rank.id==='staff')permission.select.disabled=true;
@@ -257,6 +272,11 @@
       form.addEventListener('submit',async event=>{event.preventDefault();const management=permission.select.value==='true';if(management!==!!rank.management && !confirm('Change permissions for '+rank.name+'? This applies immediately to all '+count+' staff assigned to this rank.'))return;save.disabled=true;try{await api('rank',{id:rank.id,name:name.value,management});await loadDirectory();notice('Rank updated.',true);}catch(error){notice(error.message);save.disabled=false;}});list.append(form);
     });
   }
+  $('copy-discord-ranks').addEventListener('click', async () => {
+    const text = [...$('discord-rank-order').children].map(item => item.textContent).join('\n');
+    try { await navigator.clipboard.writeText(text); notice('Discord ranks copied in order, from highest to lowest.', true); }
+    catch { notice('Copy is unavailable in this browser. Select the ranks in the list and copy them.'); }
+  });
   function renderTasks() {
     const list=$('tasks-list'), filter=$('task-filter').value;list.replaceChildren();
     const tasks=(dashboard?.tasks||[]).filter(t=>filter==='all'||(filter==='done'?t.status==='done':t.status!=='done'));

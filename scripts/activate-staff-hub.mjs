@@ -39,8 +39,11 @@ if (current.d1_databases?.STAFF_DB && current.d1_databases.STAFF_DB.id !== id) t
 await query(id, await readFile('migrations/0001_staff.sql', 'utf8'));
 await query(id, await readFile('migrations/0002_management.sql', 'utf8'));
 await query(id, await readFile('migrations/0003_recovery.sql', 'utf8'));
+await query(id, await readFile('migrations/0004_group_leadership.sql', 'utf8'));
 const managementSchema = await query(id, "SELECT COUNT(*) AS total FROM staff_ranks");
-if (Number(managementSchema[0]?.results?.[0]?.total) < 5) throw new Error('Management schema verification failed.');
+if (Number(managementSchema[0]?.results?.[0]?.total) < 10) throw new Error('Group leadership rank verification failed.');
+const rankCatalog = await query(id, 'SELECT name FROM staff_ranks ORDER BY sort_order,name');
+console.log('Verified group rank catalog: ' + rankCatalog[0].results.map(rank => rank.name).join('; '));
 console.log('Altaş staff database created or verified; schema applied.');
 const rows = await query(id, "SELECT COUNT(*) AS total FROM staff_users WHERE role='chairman'");
 const chairmanExists = Number(rows[0]?.results?.[0]?.total) > 0;
