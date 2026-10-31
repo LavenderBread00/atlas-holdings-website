@@ -3,7 +3,6 @@
   const $ = id => document.getElementById(id);
   const tabLabels = { overview: 'Overview', tasks: 'Tasks & assignments', announcements: 'Announcements', resources: 'Documents & links', directory: 'Staff directory', team: 'Staff management', ranks: 'Ranks & permissions', activity: 'Activity log', account: 'My account' };
   const groupPositions = [
-    ['group-ceo', 'Group Chief Executive Officer'],
     ['group-cfo', 'Group Chief Financial Officer'],
     ['group-coo', 'Group Chief Operating Officer'],
     ['group-cto', 'Group Chief Technology Officer'],
@@ -43,7 +42,8 @@
   });
   let user = null, dashboard = null, directory = null;
   const isManager = () => user?.role === 'chairman' || user?.management === true;
-  const rankName = person => person.role === 'chairman' ? 'Chairman' : person.rank || 'Holdings Staff';
+  const ceoTitle = 'Group Chief Executive Officer';
+  const rankName = person => person.role === 'chairman' ? ceoTitle : person.rank || 'Holdings Staff';
   const authParams = new URLSearchParams(location.hash.slice(1));
   const inviteToken = authParams.get('invite');
   let resetToken = authParams.get('reset');
@@ -58,7 +58,7 @@
   async function api(action, data) {
     const res = await fetch('/api/staff/' + action, { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: data === undefined ? {} : { 'Content-Type': 'application/json' }, body: data === undefined ? undefined : JSON.stringify(data) });
     let result;
-    try { result = await res.json(); } catch { throw new Error('The staff service is awaiting activation. Please contact the chairman.'); }
+    try { result = await res.json(); } catch { throw new Error('The staff service is awaiting activation. Please contact the Group CEO.'); }
     if (!res.ok) {
       if (res.status === 401 && user) { user = null; showAuth(); }
       throw new Error(result.error || 'The request could not be completed.');
@@ -79,7 +79,7 @@
     $('recovery-help').hidden = mode !== 'recovery-help';
     $('forgot-password').hidden = mode !== 'login';
     $('auth-title').textContent = mode === 'reset' ? 'Choose a new password.' : mode === 'recovery-help' ? 'Let’s get you back in.' : mode === 'invite' ? 'Join the group.' : mode === 'setup' ? 'Set up your hub.' : 'Welcome back.';
-    $('auth-description').textContent = mode === 'reset' ? 'Your account and work will stay exactly where you left them.' : mode === 'recovery-help' ? 'Recover access with a private, one-use link.' : mode === 'invite' ? 'Create your individual Altaş Holdings staff account.' : mode === 'setup' ? 'Create the first chairman account.' : 'Sign in with your Altaş Holdings staff account.';
+    $('auth-description').textContent = mode === 'reset' ? 'Your account and work will stay exactly where you left them.' : mode === 'recovery-help' ? 'Recover access with a private, one-use link.' : mode === 'invite' ? 'Create your individual Altaş Holdings staff account.' : mode === 'setup' ? 'Create the first CEO account.' : 'Sign in with your Altaş Holdings staff account.';
     $('auth-foot').hidden = ['reset', 'recovery-help'].includes(mode);
     $('return-login').hidden = mode === 'login';
     $('setup-toggle').hidden = mode !== 'login' || !$('setup-toggle').dataset.available;
@@ -87,7 +87,7 @@
   async function showWorkspace() {
     document.body.classList.add('is-signed-in');
     $('loading').hidden = true; $('auth').hidden = true; $('workspace').hidden = false;
-    document.querySelectorAll('.chairman-only').forEach(el => { el.hidden = user.role !== 'chairman'; });
+    document.querySelectorAll('.owner-only').forEach(el => { el.hidden = user.role !== 'chairman'; });
     document.querySelectorAll('.management-only').forEach(el => { el.hidden = !isManager(); });
     const identity = $('identity'); identity.replaceChildren(element('strong', '', user.name), element('small', '', user.email));
     $('role-badge').textContent = rankName(user).toUpperCase();
@@ -182,7 +182,7 @@
       if (isManager()) card.append(deleteButton('resource', item.id));
       resources.append(card);
     });
-    if (!dashboard.resources.length) resources.append(element('p', 'empty', 'Shared documents and links will appear here when added by the chairman.'));
+    if (!dashboard.resources.length) resources.append(element('p', 'empty', 'Shared documents and links will appear here when added by the Group CEO.'));
   }
   function renderOverview() {
     const list = $('overview-tasks'); list.replaceChildren();
@@ -209,7 +209,7 @@
     const result = await api('staff'); const list = $('staff-list'); list.replaceChildren();
     result.staff.forEach(person => {
       const card = element('article', 'person'), info = element('div');
-      info.append(element('h3', '', person.name), element('small', '', person.email), element('small', '', (person.role === 'chairman' ? 'Chairman' : 'Holdings staff') + ' · ' + (person.active ? 'Active' : 'Suspended'))); card.append(info);
+      info.append(element('h3', '', person.name), element('small', '', person.email), element('small', '', (person.role === 'chairman' ? ceoTitle : 'Holdings staff') + ' · ' + (person.active ? 'Active' : 'Suspended'))); card.append(info);
       if (person.role !== 'chairman') {
         const button = element('button', '', person.active ? 'Suspend access' : 'Restore access'); button.type = 'button';
         button.addEventListener('click', async () => {
@@ -232,7 +232,9 @@
     select.value=value; label.append(select);return {label,select};
   }
   async function loadDirectory() {
-    directory=await api('directory'); renderDirectory(); renderRanks();
+    directory=await api('directory');
+    directory.ranks = directory.ranks.filter(rank => rank.id !== 'group-ceo' && rank.name.toLowerCase() !== ceoTitle.toLowerCase());
+    renderDirectory(); renderRanks();
     const select=$('task-assignee'), previous=select.value; select.replaceChildren(element('option','','Choose a staff member'));select.firstChild.value='';
     directory.staff.filter(p=>p.active).forEach(p=>{const option=element('option','',p.name+' · '+rankName(p));option.value=p.id;select.append(option);});
     if([...select.options].some(o=>o.value===previous))select.value=previous;
@@ -260,9 +262,9 @@
     const list=$('ranks-list');list.replaceChildren();
     const order = rank => { const index = groupPositions.findIndex(([id,name]) => rank.id === id || rank.name.toLowerCase() === name.toLowerCase()); return index < 0 ? 100 : index; };
     const ranks = [...directory.ranks].sort((a,b) => order(a) - order(b) || (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
-    const hierarchy = $('discord-rank-order');hierarchy.replaceChildren(element('li', '', 'Chairman'));
+    const hierarchy = $('discord-rank-order');hierarchy.replaceChildren(element('li', '', ceoTitle));
     ranks.forEach(rank => hierarchy.append(element('li', '', rank.name)));
-    const chairman=element('article','panel');chairman.append(element('h2','','Chairman'),element('p','','Owner rank · protected · full control'));list.append(chairman);
+    const ownerCard=element('article','panel');ownerCard.append(element('h2','',ceoTitle),element('p','','Your owner position · protected · full control'));list.append(ownerCard);
     ranks.forEach(rank=>{
       const form=element('form','panel'), title=element('h2','',rank.name), label=element('label','','Rank name'), name=element('input');name.value=rank.name;name.required=true;name.minLength=2;name.maxLength=60;label.append(name);
       const permission=selectControl('Portal permissions',[['false','Standard staff'],['true','Management']],String(!!rank.management));

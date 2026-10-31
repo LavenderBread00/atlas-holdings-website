@@ -1,4 +1,4 @@
-name: Recover Holdings Chairman Account
+name: Recover Holdings CEO Account
 on:
   push:
     branches: [main]
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       email:
-        description: Chairman account email
+        description: CEO account email
         required: true
         type: string
       token_hash:
@@ -34,7 +34,7 @@ jobs:
           node-version: '24'
       - name: Verify authentication and recovery protections
         run: node --test tests/staff-auth.test.mjs
-      - name: Prepare private one-use chairman recovery
+      - name: Prepare private one-use CEO recovery
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           RECOVERY_EMAIL: ${{ inputs.email }}

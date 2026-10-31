@@ -31,7 +31,9 @@ const passField = value => {
   if (typeof value !== 'string' || value.length < 6 || value.length > 128) fail('Use a password between 6 and 128 characters.');
   return value;
 };
-const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, rank: user.role === 'chairman' ? 'Chairman' : (user.rank || 'Holdings Staff'), department: user.department || '', management: user.role === 'chairman' || !!user.management });
+const ceoTitle = 'Group Chief Executive Officer';
+const reservedOwnerName = name => ['chairman','ceo','group ceo','chief executive officer','group chief executive officer'].includes(name.trim().toLowerCase());
+const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, rank: user.role === 'chairman' ? ceoTitle : (user.rank || 'Holdings Staff'), department: user.department || '', management: user.role === 'chairman' || !!user.management });
 
 export async function onRequest({ request, env }) {
   try {
@@ -40,7 +42,7 @@ export async function onRequest({ request, env }) {
     const method = request.method;
     if (!['GET', 'POST'].includes(method)) return response({ error: 'Method not allowed.' }, 405, { Allow: 'GET, POST' });
     if (method === 'POST' && request.headers.get('Origin') !== url.origin) fail('Please submit from the Altaş Staff Hub.', 403);
-    if (!env.STAFF_DB) fail('The staff hub is awaiting Cloudflare database activation. Please contact the chairman.', 503);
+    if (!env.STAFF_DB) fail('The staff hub is awaiting Cloudflare database activation. Please contact the Group CEO.', 503);
     const db = env.STAFF_DB;
     const now = Date.now();
     const setupHash = /^[a-f0-9]{64}$/.test(env.STAFF_SETUP_KEY_HASH || '') ? env.STAFF_SETUP_KEY_HASH : typeof env.STAFF_SETUP_KEY === 'string' && env.STAFF_SETUP_KEY.length >= 32 ? await digest(env.STAFF_SETUP_KEY) : null;
@@ -99,11 +101,14 @@ export async function onRequest({ request, env }) {
       await rate('auth', 25, 15);
       if (action === 'setup') {
         if (!setupHash || typeof body.setupKey !== 'string' || body.setupKey.length > 256 || !same(await digest(body.setupKey), setupHash)) fail('Setup is unavailable or the setup key is incorrect.', 403);
-        if (await query("SELECT id FROM staff_users WHERE role='chairman'").first()) fail('The chairman account has already been created.', 409);
+        if (await query("SELECT id FROM staff_users WHERE role='chairman'").first()) fail('The CEO account has already been created.', 409);
         const email = emailField(body.email), name = field(body.name, 2, 80, 'Name');
         const salt = random(), hash = await passwordHash(passField(body.password), salt), id = crypto.randomUUID();
-        await query("INSERT INTO staff_users(id,email,name,password_hash,salt,role,created_at) VALUES (?,?,?,?,?,'chairman',?)", id, email, name, hash, salt, now).run();
-        return response({ user: { id, email, name, role: 'chairman' } }, 201, { 'Set-Cookie': await newSession(id, false) });
+        await db.batch([
+          query("INSERT INTO staff_users(id,email,name,password_hash,salt,role,created_at) VALUES (?,?,?,?,?,'chairman',?)", id, email, name, hash, salt, now),
+          query("INSERT INTO staff_profiles(user_id,rank_id,department) VALUES (?,'group-ceo','Executive Office')", id)
+        ]);
+        return response({ user: publicUser({ id, email, name, role: 'chairman', department: 'Executive Office' }) }, 201, { 'Set-Cookie': await newSession(id, false) });
       }
       if (action === 'accept-invite') {
         const token = field(body.token, 64, 64, 'Invitation');
@@ -167,12 +172,12 @@ export async function onRequest({ request, env }) {
       return response({ ok: true });
     }
     if (!manager) fail('Management access is required.', 403);
-    const chairmanActions = ['staff','invite','staff-access','staff-profile','rank','activity','revoke-invite'];
-    if (chairmanActions.includes(action) && user.role !== 'chairman') fail('Only the chairman can manage ranks and staff access.', 403);
+    const ownerActions = ['staff','invite','staff-access','staff-profile','rank','activity','revoke-invite'];
+    if (ownerActions.includes(action) && user.role !== 'chairman') fail('Only the Group CEO can manage ranks and staff access.', 403);
     if (method === 'GET' && action === 'directory') {
       const result = await query("SELECT u.id,u.name,u.email,u.role,u.active,COALESCE(r.name,'Holdings Staff') AS rank,COALESCE(p.department,'') AS department,COALESCE(p.rank_id,'staff') AS rank_id,COALESCE(r.management,0) AS management FROM staff_users u LEFT JOIN staff_profiles p ON p.user_id=u.id LEFT JOIN staff_ranks r ON r.id=COALESCE(p.rank_id,'staff') ORDER BY u.name").all();
       const ranks = await query('SELECT * FROM staff_ranks ORDER BY sort_order,name').all();
-      return response({ staff: result.results, ranks: ranks.results });
+      return response({ staff: result.results.map(person => ({ ...person, rank: person.role === 'chairman' ? ceoTitle : person.rank, management: person.role === 'chairman' ? 1 : person.management })), ranks: ranks.results.filter(rank => rank.id !== 'group-ceo' && !reservedOwnerName(rank.name)) });
     }
     if (method === 'GET' && action === 'activity') {
       const result = await query('SELECT a.action,a.detail,a.created_at,u.name AS actor FROM staff_activity a JOIN staff_users u ON u.id=a.actor_id ORDER BY a.created_at DESC,a.rowid DESC LIMIT 100').all();
@@ -181,7 +186,7 @@ export async function onRequest({ request, env }) {
     if (method === 'POST' && action === 'rank') {
       const name = field(body.name,2,60,'Rank name');
       if (typeof body.management !== 'boolean') fail('Choose rank permissions.');
-      if (name.toLowerCase() === 'chairman') fail('Chairman is reserved for the owner.');
+      if (reservedOwnerName(name) || body.id === 'group-ceo') fail('Group Chief Executive Officer is the protected owner position.');
       const id = body.id ? field(body.id,1,100,'Rank ID') : crypto.randomUUID();
       const old = await query('SELECT * FROM staff_ranks WHERE id=?', id).first();
       if (body.id && !old) fail('Rank not found.',404);
@@ -200,6 +205,7 @@ export async function onRequest({ request, env }) {
       if (!target) fail('Staff member not found.',404);
       const selected = await query('SELECT * FROM staff_ranks WHERE id=?',rank).first();
       if (!selected) fail('Rank not found.',404);
+      if (selected.id === 'group-ceo' || reservedOwnerName(selected.name)) fail('The Group CEO position belongs to the owner account.');
       await db.batch([query('INSERT INTO staff_profiles(user_id,rank_id,department) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET rank_id=excluded.rank_id,department=excluded.department',id,rank,department),audit('Staff rank updated',target.name + ' · ' + selected.name + (department?' · '+department:''),user.id)]);
       return response({ok:true});
     }
@@ -264,7 +270,7 @@ export async function onRequest({ request, env }) {
     }
     return response({ error: 'Not found.' }, 404);
   } catch (error) {
-    return response({ error: error.status ? error.message : 'The staff service is unavailable. Please try again or contact the chairman.' }, error.status || 503);
+    return response({ error: error.status ? error.message : 'The staff service is unavailable. Please try again or contact the Group CEO.' }, error.status || 503);
   }
 }
 

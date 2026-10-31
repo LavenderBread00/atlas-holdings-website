@@ -36,10 +36,10 @@ async function query(sql, params = []) {
 }
 await query(await readFile('migrations/0003_recovery.sql', 'utf8'));
 const owner = (await query("SELECT id FROM staff_users WHERE email=? AND role='chairman' AND active=1", [email.trim().toLowerCase()]))[0]?.results?.[0];
-if (!owner) throw new Error('No active chairman account matches that email. No account was changed.');
+if (!owner) throw new Error('No active CEO account matches that email. No account was changed.');
 await query('INSERT INTO staff_password_resets(token_hash,user_id,expires_at,used_at,created_at) VALUES (?,?,?,NULL,?) ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash,expires_at=excluded.expires_at,used_at=NULL,created_at=excluded.created_at WHERE staff_password_resets.token_hash<>excluded.token_hash AND staff_password_resets.created_at<excluded.created_at', [tokenHash, owner.id, expiresAt, createdAt]);
 const saved = (await query('SELECT expires_at,used_at FROM staff_password_resets WHERE token_hash=? AND user_id=?', [tokenHash, owner.id]))[0]?.results?.[0];
 if (!saved || saved.used_at !== null || saved.expires_at <= now) throw new Error('This recovery request is expired, used or superseded. It has not been reactivated.');
-await query('INSERT INTO staff_activity(id,actor_id,action,detail,created_at) VALUES (?,?,?,?,?)', [crypto.randomUUID(), owner.id, 'Recovery link issued', 'Private chairman recovery prepared through repository administration.', now]);
-console.log('VERIFIED: one-use chairman recovery prepared. Existing password, staff records, permissions and sessions are unchanged until the owner submits a new password.');
+await query('INSERT INTO staff_activity(id,actor_id,action,detail,created_at) VALUES (?,?,?,?,?)', [crypto.randomUUID(), owner.id, 'Recovery link issued', 'Private CEO recovery prepared through repository administration.', now]);
+console.log('VERIFIED: one-use CEO recovery prepared. Existing password, staff records, permissions and sessions are unchanged until the owner submits a new password.');
 console.log('Recovery expires at ' + new Date(expiresAt).toISOString() + '. The raw recovery token is not stored in GitHub or logs.');

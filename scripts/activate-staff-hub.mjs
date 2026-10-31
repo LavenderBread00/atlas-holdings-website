@@ -40,19 +40,25 @@ await query(id, await readFile('migrations/0001_staff.sql', 'utf8'));
 await query(id, await readFile('migrations/0002_management.sql', 'utf8'));
 await query(id, await readFile('migrations/0003_recovery.sql', 'utf8'));
 await query(id, await readFile('migrations/0004_group_leadership.sql', 'utf8'));
+await query(id, await readFile('migrations/0005_ceo_owner.sql', 'utf8'));
 const managementSchema = await query(id, "SELECT COUNT(*) AS total FROM staff_ranks");
 if (Number(managementSchema[0]?.results?.[0]?.total) < 10) throw new Error('Group leadership rank verification failed.');
 const rankCatalog = await query(id, 'SELECT name FROM staff_ranks ORDER BY sort_order,name');
 console.log('Verified group rank catalog: ' + rankCatalog[0].results.map(rank => rank.name).join('; '));
 console.log('Altaş staff database created or verified; schema applied.');
 const rows = await query(id, "SELECT COUNT(*) AS total FROM staff_users WHERE role='chairman'");
-const chairmanExists = Number(rows[0]?.results?.[0]?.total) > 0;
+const ownerExists = Number(rows[0]?.results?.[0]?.total) > 0;
+if (ownerExists) {
+  const owners = await query(id, "SELECT COUNT(*) AS total FROM staff_users u JOIN staff_profiles p ON p.user_id=u.id WHERE u.role='chairman' AND p.rank_id='group-ceo'");
+  if (Number(owners[0]?.results?.[0]?.total) !== 1) throw new Error('Protected CEO position verification failed.');
+  console.log('VERIFIED: the existing owner account holds the protected Group Chief Executive Officer position.');
+}
 const production = { d1_databases: { ...(current.d1_databases || {}), STAFF_DB: { id } } };
-if (!chairmanExists) production.env_vars = { STAFF_SETUP_KEY_HASH: { type: 'secret_text', value: setupHash } };
+if (!ownerExists) production.env_vars = { STAFF_SETUP_KEY_HASH: { type: 'secret_text', value: setupHash } };
 await api(projectPath, 'PATCH', { deployment_configs: { production } });
 project = await api(projectPath);
 if (project.deployment_configs?.production?.d1_databases?.STAFF_DB?.id !== id) throw new Error('Could not verify the production database binding.');
-console.log('Production STAFF_DB binding verified. ' + (chairmanExists ? 'Existing chairman account preserved.' : 'Private chairman setup is enabled.'));
+console.log('Production STAFF_DB binding verified. ' + (ownerExists ? 'Existing CEO account preserved.' : 'Private CEO setup is enabled.'));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 let sourceDeployment;
 for (let attempt = 0; attempt < 36; attempt++) {
@@ -71,7 +77,7 @@ for (let attempt = 0; attempt < 60; attempt++) {
     const res = await fetch('https://atlas-holdings-website.pages.dev/api/staff/status', { cache: 'no-store' });
     const status = await res.json();
     if (!res.ok || status.ready !== true) throw new Error('Deployment completed, but the staff service readiness check failed.');
-    if (!chairmanExists && status.setup !== true) throw new Error('Database is ready, but chairman setup is not enabled.');
+    if (!ownerExists && status.setup !== true) throw new Error('Database is ready, but CEO setup is not enabled.');
     console.log('VERIFIED: production staff hub is connected and ready.');
     console.log('Staff Hub: https://atlas-holdings-website.pages.dev/staff/');
     process.exit(0);

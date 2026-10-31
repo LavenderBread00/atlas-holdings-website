@@ -11,6 +11,7 @@ function database() {
   sqlite.exec(readFileSync(new URL('../migrations/0002_management.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../migrations/0003_recovery.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../migrations/0004_group_leadership.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0005_ceo_owner.sql', import.meta.url), 'utf8'));
   const wrap = (sql, args = []) => ({
     bind: (...values) => wrap(sql, values),
     first: async () => sqlite.prepare(sql).get(...args) || null,
@@ -36,6 +37,54 @@ function client(env, ip) {
     return { status: res.status, body: await res.json(), cookie: setCookie };
   };
 }
+
+test('Group CEO is the protected owner position and cannot be assigned or duplicated', async () => {
+  const env={STAFF_DB:database(),STAFF_SETUP_KEY:'ceo-test-private-setup-key-at-least-32-characters'};
+  const owner=client(env,'192.0.2.220'), staff=client(env,'192.0.2.221');
+  const created=await owner('setup',{setupKey:env.STAFF_SETUP_KEY,email:'owner@example.test',name:'Owner',password:'test password'});
+  assert.equal(created.body.user.rank,'Group Chief Executive Officer');
+  assert.equal(created.body.user.management,true);
+  assert.equal((await owner('me')).body.user.rank,'Group Chief Executive Officer');
+  const directory=(await owner('directory')).body;
+  assert.equal(directory.staff[0].rank,'Group Chief Executive Officer');
+  assert.equal(directory.ranks.some(rank=>rank.id==='group-ceo'||rank.name==='Group Chief Executive Officer'),false);
+  assert.equal(directory.ranks.length,9);
+  for(const name of ['CEO','Group CEO','Chief Executive Officer','Group Chief Executive Officer','Chairman']) {
+    assert.equal((await owner('rank',{name,management:true})).status,400);
+  }
+  assert.equal((await owner('rank',{id:'group-ceo',name:'Different owner title',management:false})).status,400);
+  const invite=await owner('invite',{email:'worker@example.test',name:'Worker'});
+  const token=new URLSearchParams(new URL(invite.body.link).hash.slice(1)).get('invite');
+  const joined=await staff('accept-invite',{token,password:'staff password',role:'chairman',rank_id:'group-ceo'});
+  assert.equal(joined.body.user.management,false);
+  assert.equal((await owner('staff-profile',{id:joined.body.user.id,rank_id:'group-ceo'})).status,400);
+  assert.equal((await staff('staff')).status,403);
+  assert.equal((await owner('staff-access',{id:created.body.user.id,active:false})).status,400);
+  assert.equal((await owner('staff-profile',{id:created.body.user.id,rank_id:'staff'})).status,404);
+  assert.equal((await owner('me')).body.user.management,true);
+  for(const path of ['../staff/index.html','../index.html']) {
+    assert.doesNotMatch(readFileSync(new URL(path,import.meta.url),'utf8'),/\bchairman\b/i,'no former owner title in website markup');
+  }
+});
+
+test('CEO migration preserves the existing owner, credentials, sessions and other staff', () => {
+  const db=new DatabaseSync(':memory:');
+  const migration=file=>readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8');
+  db.exec(migration('0001_staff.sql'));db.exec(migration('0002_management.sql'));
+  db.exec("INSERT INTO staff_users(id,email,name,password_hash,salt,role,created_at) VALUES ('owner','owner@example.test','Owner','original-hash','original-salt','chairman',1),('worker','worker@example.test','Worker','staff-hash','staff-salt','staff',1)");
+  db.exec("INSERT INTO staff_profiles(user_id,rank_id,department) VALUES ('owner','manager','Existing Department')");
+  db.exec("INSERT INTO staff_sessions(token_hash,user_id,expires_at) VALUES ('existing-session-hash','owner',9999999999999)");
+  db.exec(migration('0004_group_leadership.sql'));
+  db.exec("INSERT INTO staff_profiles(user_id,rank_id,department) VALUES ('worker','group-coo','Operations')");
+  db.exec(migration('0005_ceo_owner.sql'));db.exec(migration('0005_ceo_owner.sql'));
+  const owner=db.prepare("SELECT * FROM staff_users WHERE id='owner'").get();
+  assert.equal(owner.password_hash,'original-hash');assert.equal(owner.salt,'original-salt');
+  const profile=db.prepare("SELECT * FROM staff_profiles WHERE user_id='owner'").get();
+  assert.equal(profile.rank_id,'group-ceo');assert.equal(profile.department,'Existing Department');
+  assert.equal(db.prepare("SELECT rank_id FROM staff_profiles WHERE user_id='worker'").get().rank_id,'group-coo');
+  assert.equal(db.prepare("SELECT COUNT(*) AS total FROM staff_sessions WHERE user_id='owner'").get().total,1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS total FROM staff_users').get().total,2);
+});
 
 test('private recovery links preserve accounts, reject replay and revoke old sessions', async () => {
   const db = database(), env = { STAFF_DB: db, STAFF_SETUP_KEY: 'recovery-test-setup-key-at-least-32-characters' };
