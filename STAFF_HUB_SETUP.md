@@ -15,7 +15,7 @@ If the database is absent or uninitialised, the hub refuses sign-in and displays
 
 ## Using the hub
 
-The Group CEO creates invitations in Staff management and privately shares the generated links. Links are single-use, expire after 48 hours and are bound to the invited email. The app does not send email. Creating a new invitation for the same email invalidates the previous link.
+The Group CEO creates invitations in Staff management and privately shares the generated links. Links are single-use, expire after 48 hours and are bound to the invited email. Invitations are shared manually rather than sent by email. Creating a new invitation for the same email invalidates the previous link.
 
 All active staff can read group announcements and resources and update tasks assigned to them. Feature permissions determine who can publish or delete announcements and resources, view the staff directory, see group tasks, or assign and update group work. Only the Group CEO can invite staff, revoke invitations, suspend/restore access, manage ranks and assignments, or read the activity log. Suspension revokes all sessions. Resource links point to externally hosted documents; the document owner's permissions still control the linked file itself.
 
@@ -23,11 +23,11 @@ Sessions use hashed random tokens stored in D1 and a Secure, HttpOnly, SameSite=
 
 ## Account recovery
 
-The sign-in screen provides **Forgot your password?** guidance. Recovery uses private, single-use links, not automatic email. It preserves account IDs, roles, staff assignments and existing work. A link is checked without being consumed; submitting a valid new password atomically consumes the link, updates the salted hash, revokes all old sessions and records an audit entry. The user then signs in normally. Expired links, token hashes, inactive accounts and replayed links are refused. Requests require matching Origin, JSON and rate limits.
+The sign-in screen provides **Forgot your password?** email verification when activated (see below). Private administrator recovery links remain available as a fallback. It preserves account IDs, roles, staff assignments and existing work. A link is checked without being consumed; submitting a valid new password atomically consumes the link, updates the salted hash, revokes all old sessions and records an audit entry. The user then signs in normally. Expired links, token hashes, inactive accounts and replayed links are refused. Requests require matching Origin, JSON and rate limits.
 
 For a lost **Group CEO** password, a trusted repository administrator can run **Recover Holdings CEO Account** from main. Generate a cryptographically random 32-byte token privately, calculate its SHA-256 hash, and give the workflow only the account email, hash and expiry (Unix milliseconds, at most 24 hours ahead). The workflow uses the existing encrypted Cloudflare API token and the production `STAFF_DB` binding, and refuses accounts without the active owner role. Never commit the raw token, a password or an API key. Share the private `/staff/#reset=RAW_TOKEN` link only with the account owner. A reviewed `.github/recovery/chairman.json` containing only the email, hash, creation and expiry can also trigger this operation; remove the request after it is prepared. Replaying the same request cannot reactivate a used link.
 
-Ordinary staff recovery still requires administrator assistance. The public site cannot issue recovery tokens or change an account by knowing its email. There is no default password or public password-reset bypass. The original setup key never resets an existing CEO account.
+Without email recovery activation, staff recovery requires administrator assistance. Knowing an email address alone never authorizes a password change; the email flow requires proof of ownership. There is no default password or public password-reset bypass. The original setup key never resets an existing CEO account.
 
 ## Validation
 
