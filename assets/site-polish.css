@@ -20,7 +20,7 @@
 @media(max-width:560px){.guideline-item{grid-template-columns:32px minmax(0,1fr);gap:12px;padding:20px}.guideline-number{width:32px;height:32px;border-radius:9px}.guideline-item h3{font-size:18px}.terms-enforcement{padding:23px}.terms-enforcement h2{font-size:22px}}
 /* Owned airline cards share the group layout while keeping their own identities. */
 .group-company-list{display:grid;gap:28px}
-.view .air-dolomiti-company .air-dolomiti-image{background-image:url('/assets/air-dolomiti-aircraft.webp');background-size:cover;background-position:center}
+.view .air-dolomiti-company .air-dolomiti-image{background-image:url('/assets/air-dolomiti-front.webp');background-size:cover;background-position:8% center}
 .carousel-frame img[src="/assets/air-dolomiti-aircraft.webp"]{object-position:54% 20%}
 .company-identity{display:flex;align-items:center;gap:16px;min-width:0;margin-bottom:20px}
 .company-identity img{width:60px;height:60px;object-fit:contain;flex:none;border-radius:14px}
@@ -115,3 +115,6 @@ body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 }
 @media(max-width:380px){.view[data-view="home"] .carousel-copy{padding:27px 20px}.view[data-view="home"] .carousel-copy h1{font-size:36px}.view[data-view="home"] .carousel-actions{gap:9px}.view[data-view="home"] .studio-button{padding:10px 14px;font-size:13px}.view[data-view="home"] .group-card-grid>.group-card{padding:25px}.view[data-view="home"] .group-card-grid>.group-card h3{font-size:26px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.view.active{animation:none}.carousel-frame{transition:none}.group-card,.view .studio-button{transition:none}}
+
+/* Keep the cockpit and front logo visible when the aircraft photo fills a narrow screen. */
+.carousel-frame img[src="/assets/air-dolomiti-front.webp"]{object-position:8% center}
