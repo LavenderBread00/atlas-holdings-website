@@ -20,8 +20,9 @@ if(!/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team||''))throw Error('Existing e
 const providers=await api('/access/identity_providers');
 const apps=await api('/access/apps?per_page=100');
 const staff=apps.find(a=>a.aud===referenceEnv.ACCESS_AUD?.value);
-const pin=providers.find(p=>p.type==='onetimepin'&&staff?.allowed_idps?.includes(p.id));
-if(!pin)throw Error('Existing email-code provider did not verify.');
+const pins=providers.filter(p=>p.type==='onetimepin');
+const pin=pins.find(p=>staff?.allowed_idps?.includes(p.id))||(pins.length===1?pins[0]:null);
+if(!pin)throw Error('Existing email-code provider did not verify. Available provider types: '+providers.map(p=>p.type).join(', ')+'; OTP provider count: '+pins.length+'.');
 const policies=await api('/access/policies?per_page=100');
 const policyName='Altaş staff recovery - verified email',domain='atlas-holdings-website.pages.dev/api/staff/email-reset/*',name='Altaş staff email recovery';
 const expected={name:policyName,decision:'allow',include:[{login_method:{id:pin.id}}],require:[],exclude:[],session_duration:'1h'};
@@ -33,8 +34,8 @@ if(apps.some(a=>a.domain!==domain&&(a.policies||[]).some(p=>p.id===policy.id)))t
 if(!app)app=await api('/access/apps','POST',{name,type:'self_hosted',domain,session_duration:'1h',allowed_idps:[pin.id],auto_redirect_to_identity:true,allow_authenticate_via_warp:false,app_launcher_visible:false,http_only_cookie_attribute:true,path_cookie_attribute:true,same_site_cookie_attribute:'lax',policies:[{id:policy.id,precedence:1}]});
 const checked=await api('/access/apps/'+app.id);
 if(checked.name!==name||checked.type!=='self_hosted'||checked.domain!==domain||checked.session_duration!=='1h'||!checked.aud||[referenceEnv.ACCESS_AUD?.value,referenceEnv.APPLICANT_EMAIL_AUD?.value].includes(checked.aud)||!equal(checked.allowed_idps,[pin.id])||checked.policies?.length!==1||checked.policies[0].id!==policy.id||checked.allow_authenticate_via_warp!==false||checked.http_only_cookie_attribute!==true||checked.path_cookie_attribute!==true)throw Error('Recovery application did not verify.');
-const prior=await api('/access/apps/'+staff.id);
-for(const key of ['aud','domain','allowed_idps','policies','session_duration'])if(!equal(prior[key],staff[key]))throw Error('Existing staff sign-in configuration changed unexpectedly.');
+if(staff){const prior=await api('/access/apps/'+staff.id);
+ for(const key of ['aud','domain','allowed_idps','policies','session_duration'])if(!equal(prior[key],staff[key]))throw Error('Existing staff sign-in configuration changed unexpectedly.');}
 if(env.STAFF_EMAIL_AUD?.value!==checked.aud||env.STAFF_EMAIL_TEAM_DOMAIN?.value!==team){
  await api(projectPath,'PATCH',{deployment_configs:{production:{env_vars:{STAFF_EMAIL_AUD:{type:'plain_text',value:checked.aud},STAFF_EMAIL_TEAM_DOMAIN:{type:'plain_text',value:team}}}}});
  const after=(await api(projectPath)).deployment_configs.production;
