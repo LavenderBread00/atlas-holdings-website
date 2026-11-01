@@ -1,3 +1,4 @@
+import {emailRecoveryConfigured,staffEmailRecovery} from '../../../server/staff-email-recovery.mjs';
 const enc = new TextEncoder();
 const cookieName = '__Host-altas_staff';
 const hex = bytes => Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, '0')).join('');
@@ -58,7 +59,7 @@ export async function onRequest({ request, env }) {
 
     if (method === 'GET' && action === 'status') {
       const admin = await query("SELECT id FROM staff_users WHERE role='chairman'").first();
-      return response({ ready: true, setup: !admin && !!setupHash });
+      return response({ ready: true, setup: !admin && !!setupHash, emailRecovery: emailRecoveryConfigured(env) });
     }
     let body = {};
     if (method === 'POST') {
@@ -73,6 +74,7 @@ export async function onRequest({ request, env }) {
       const row = await query('INSERT INTO staff_rate_limits(key,count,expires_at) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires_at<=? THEN 1 ELSE count+1 END, expires_at=CASE WHEN expires_at<=? THEN excluded.expires_at ELSE expires_at END RETURNING count', key, now + minutes * 60000, now, now).first();
       if (row.count > limit) fail('Too many attempts. Please try again later.', 429);
     };
+    if ((method === 'POST' && action === 'request-reset') || (method === 'GET' && action === 'email-reset/verify')) return await staffEmailRecovery({request,env,query,rate,body,now,response});
     const newSession = async (id, remember) => {
       const token = random();
       const age = (remember ? 30 * 24 : 12) * 3600;
@@ -81,7 +83,7 @@ export async function onRequest({ request, env }) {
     };
     if (method === 'POST' && ['check-reset', 'reset-password'].includes(action)) {
       await rate('recovery', 15, 15);
-      const invalid = () => fail('This recovery link has expired or has already been used. Ask your administrator for a new link.', 410);
+      const invalid = () => fail('This recovery link has expired or has already been used. Return to sign in and request a new email reset, or ask your administrator for a recovery link.', 410);
       if (typeof body.token !== 'string' || !/^[a-f0-9]{64}$/.test(body.token)) invalid();
       const resetHash = await digest(body.token);
       const reset = await query('SELECT r.user_id FROM staff_password_resets r JOIN staff_users u ON u.id=r.user_id WHERE r.token_hash=? AND r.used_at IS NULL AND r.expires_at>? AND u.active=1', resetHash, now).first();

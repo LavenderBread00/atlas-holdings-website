@@ -55,7 +55,9 @@
   const authParams = new URLSearchParams(location.hash.slice(1));
   const inviteToken = authParams.get('invite');
   let resetToken = authParams.get('reset');
-  if (inviteToken || resetToken) history.replaceState(null, '', location.pathname);
+  const recoveryError=authParams.has('recovery-error');
+  let emailRecoveryReady=false;
+  if (inviteToken || resetToken || recoveryError) history.replaceState(null, '', location.pathname);
   $('year').textContent = new Date().getFullYear();
   function notice(message, success = false) {
     $('notice').textContent = message;
@@ -88,9 +90,11 @@
     $('loading').hidden = true; $('workspace').hidden = true; $('auth').hidden = false;
     ['login', 'setup', 'invite', 'reset'].forEach(value => { $(value + '-form').hidden = mode !== value; });
     $('recovery-help').hidden = mode !== 'recovery-help';
+    $('email-recovery-status').hidden=emailRecoveryReady;
+    $('recovery-help').querySelector('[type=submit]').disabled=!emailRecoveryReady;
     $('forgot-password').hidden = mode !== 'login';
     $('auth-title').textContent = mode === 'reset' ? 'Choose a new password.' : mode === 'recovery-help' ? 'Let’s get you back in.' : mode === 'invite' ? 'Join the group.' : mode === 'setup' ? 'Set up your hub.' : 'Welcome back.';
-    $('auth-description').textContent = mode === 'reset' ? 'Your account and work will stay exactly where you left them.' : mode === 'recovery-help' ? 'Recover access with a private, one-use link.' : mode === 'invite' ? 'Create your individual Altaş Holdings staff account.' : mode === 'setup' ? 'Create the first CEO account.' : 'Sign in with your Altaş Holdings staff account.';
+    $('auth-description').textContent = mode === 'reset' ? 'Your account and work will stay exactly where you left them.' : mode === 'recovery-help' ? 'Verify your staff email to choose a new password.' : mode === 'invite' ? 'Create your individual Altaş Holdings staff account.' : mode === 'setup' ? 'Create the first CEO account.' : 'Sign in with your Altaş Holdings staff account.';
     $('auth-foot').hidden = ['reset', 'recovery-help'].includes(mode);
     $('return-login').hidden = mode === 'login';
     $('setup-toggle').hidden = mode !== 'login' || !$('setup-toggle').dataset.available;
@@ -162,6 +166,7 @@
     $('login-form').querySelector('[name=password]').focus();
     notice('Your password has been updated. Sign in with your email and new password.', true);
   });
+  bindForm('recovery-help',async values=>{if(!emailRecoveryReady)throw new Error('Email reset is awaiting activation. Contact your account manager for a private recovery link.');const result=await api('request-reset',values);const target=new URL(result.verificationUrl);if(target.origin!==location.origin||target.pathname!=='/api/staff/email-reset/verify')throw new Error('Email verification could not open.');location.assign(target.href);});
   $('forgot-password').addEventListener('click', () => { notice(''); showAuth('recovery-help'); });
   $('setup-toggle').addEventListener('click', () => showAuth('setup'));
   $('logout').addEventListener('click', async () => {
@@ -338,6 +343,7 @@
   async function init() {
     try {
       const status = await api('status');
+      emailRecoveryReady=status.emailRecovery===true;
       $('setup-toggle').dataset.available = status.setup ? 'true' : '';
       if (resetToken) {
         showAuth('reset');
@@ -346,6 +352,7 @@
         return;
       }
       if (inviteToken) { showAuth('invite'); return; }
+      if (recoveryError) {showAuth('recovery-help');notice('Email verification was incomplete, expired or used a different address. Start again with the email on your staff account.');return;}
       try { const result = await api('me'); user = result.user; }
       catch (error) { if (!error.message.includes('sign in')) throw error; }
       if (user) await showWorkspace(); else showAuth();

@@ -449,3 +449,73 @@ test('management migration is additive and safe to re-run', () => {
  assert.equal(db.prepare('SELECT password_hash FROM staff_users').get().password_hash,'hash');
 });
 
+
+test('email recovery proves ownership and browser state before issuing a one-use password reset', async () => {
+  const env={STAFF_DB:database(),STAFF_SETUP_KEY:'email-recovery-test-private-setup-key-at-least-32-characters',STAFF_EMAIL_TEAM_DOMAIN:'atlas-test.cloudflareaccess.com',STAFF_EMAIL_AUD:'atlas-test-recovery-audience'};
+  const owner=client(env,'192.0.2.210');
+  const created=await owner('setup',{setupKey:env.STAFF_SETUP_KEY,email:'owner@example.test',name:'Owner',password:'original private password'});
+  const origin='https://atlas-holdings-website.pages.dev';
+  const request=(action,data,headers={})=>onRequest({env,request:new Request(origin+'/api/staff/'+action,{method:data===undefined?'GET':'POST',headers:{Origin:origin,'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.211',...headers},body:data===undefined?undefined:JSON.stringify(data)})});
+  const begin=async email=>{
+    const res=await request('request-reset',{email,website:''});
+    assert.equal(res.status,200);
+    const body=await res.json();
+    assert.deepEqual(Object.keys(body),['verificationUrl']);
+    assert.match(res.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Lax; Max-Age=900/);
+    return {url:body.verificationUrl,cookie:res.headers.get('set-cookie').split(';')[0]};
+  };
+  const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
+  const jwk={...await crypto.subtle.exportKey('jwk',pair.publicKey),kid:'email-test-key',alg:'RS256'};
+  const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+  const sign=async overrides=>{
+    const data=encode({alg:'RS256',kid:jwk.kid})+'.'+encode({iss:'https://'+env.STAFF_EMAIL_TEAM_DOMAIN,aud:[env.STAFF_EMAIL_AUD],exp:Math.floor(Date.now()/1000)+300,sub:'synthetic-subject',type:'app',email:'owner@example.test',...overrides});
+    return data+'.'+Buffer.from(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',pair.privateKey,new TextEncoder().encode(data))).toString('base64url');
+  };
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async url=>{assert.equal(String(url),'https://'+env.STAFF_EMAIL_TEAM_DOMAIN+'/cdn-cgi/access/certs');return Response.json({keys:[jwk]});};
+  try {
+    const {verifyEmailIdentity}=await import('../server/staff-email-recovery.mjs');
+    for(const claims of [{aud:['wrong-audience']},{iss:'https://attacker.example'},{exp:0},{nbf:Math.floor(Date.now()/1000)+100},{email:'not-an-email'},{type:'org'},{sub:''}])await assert.rejects(()=>sign(claims).then(jwt=>verifyEmailIdentity(jwt,env)),{status:401});
+    const valid=await sign({});
+    await assert.rejects(()=>verifyEmailIdentity(valid.slice(0,-10)+'aaaaaaaaaa',env),{status:401});
+    assert.equal((await verifyEmailIdentity(valid,env)).email,'owner@example.test');
+    const first=await begin('OWNER@example.test');
+    const pending=await env.STAFF_DB.prepare('SELECT token_hash FROM staff_password_resets').first();
+    assert.match(pending.token_hash,/^email:[a-f0-9]{64}$/);
+    const state=new URL(first.url).searchParams.get('state');
+    assert.equal((await request('reset-password',{token:state,password:'unauthorized new password'})).status,410);
+    const callback=async (start,jwt=valid,cookie=start.cookie)=>onRequest({env,request:new Request(start.url,{headers:{Cookie:cookie,'Cf-Access-Jwt-Assertion':jwt,'CF-Connecting-IP':'192.0.2.212'}})});
+    for(const [jwt,cookie] of [[valid,''],[valid,'__Host-altas_email_reset='+'a'.repeat(64)],[await sign({email:'other@example.test'}),first.cookie],['forged',first.cookie]]){
+      const res=await callback(first,jwt,cookie);assert.equal(res.status,303);assert.equal(res.headers.get('location'),origin+'/staff/#recovery-error=1');
+      assert.equal((await env.STAFF_DB.prepare('SELECT token_hash FROM staff_password_resets').first()).token_hash,pending.token_hash);
+    }
+    const verified=await callback(first);
+    assert.equal(verified.status,303);assert.match(verified.headers.get('set-cookie'),/Max-Age=0/);
+    const reset=new URLSearchParams(new URL(verified.headers.get('location')).hash.slice(1)).get('reset');
+    assert.match(reset,/^[a-f0-9]{64}$/);
+    assert.match((await callback(first)).headers.get('location'),/recovery-error=1$/);
+    assert.equal((await owner('me')).status,200,'verification itself does not revoke existing sessions');
+    assert.equal((await request('check-reset',{token:reset})).status,200);
+    assert.equal((await request('reset-password',{token:reset,password:'new private password'})).status,200);
+    assert.equal((await owner('me')).status,401,'saving new password revokes old sessions');
+    assert.equal((await request('reset-password',{token:reset,password:'another password'})).status,410);
+    assert.equal((await owner('login',{email:'owner@example.test',password:'original private password'})).status,401);
+    assert.equal((await owner('login',{email:'owner@example.test',password:'new private password'})).status,200);
+    assert.equal((await owner('me')).body.user.id,created.body.user.id,'account and rank preserved');
+    const nonmember=await begin('nonmember@example.test');
+    assert.match((await callback(nonmember,await sign({email:'nonmember@example.test'}))).headers.get('location'),/recovery-error=1$/);
+    const expired=await begin('owner@example.test');
+    await env.STAFF_DB.prepare('UPDATE staff_password_resets SET expires_at=0').run();
+    assert.match((await callback(expired)).headers.get('location'),/recovery-error=1$/);
+    const suspended=await begin('owner@example.test');
+    await env.STAFF_DB.prepare('UPDATE staff_users SET active=0').run();
+    assert.match((await callback(suspended)).headers.get('location'),/recovery-error=1$/);
+    assert.equal((await request('request-reset',{email:'owner@example.test',website:'spam'})).status,400);
+    assert.equal((await request('request-reset',{email:'bad-address',website:''})).status,400);
+    assert.equal((await request('request-reset',{email:'owner@example.test',website:''},{Origin:'https://attacker.example'})).status,403);
+    await begin('owner@example.test');
+    await begin('owner@example.test');
+    assert.equal((await request('request-reset',{email:'owner@example.test',website:''},{'CF-Connecting-IP':'192.0.2.220'})).status,429,'global email rate limit spans different IPs');
+    assert.equal((await env.STAFF_DB.prepare('SELECT role FROM staff_users').first()).role,'chairman');
+  } finally {globalThis.fetch=originalFetch;}
+});
