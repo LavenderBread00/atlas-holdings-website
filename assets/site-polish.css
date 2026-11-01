@@ -20,7 +20,8 @@
 @media(max-width:560px){.guideline-item{grid-template-columns:32px minmax(0,1fr);gap:12px;padding:20px}.guideline-number{width:32px;height:32px;border-radius:9px}.guideline-item h3{font-size:18px}.terms-enforcement{padding:23px}.terms-enforcement h2{font-size:22px}}
 /* Owned airline cards share the group layout while keeping their own identities. */
 .group-company-list{display:grid;gap:28px}
-.air-dolomiti-company .air-dolomiti-image{background-image:url('/assets/air-dolomiti-airport.webp');background-position:center 80%}
+.view .air-dolomiti-company .air-dolomiti-image{background-image:url('/assets/air-dolomiti-aircraft.webp');background-size:cover;background-position:center}
+.carousel-frame img[src="/assets/air-dolomiti-aircraft.webp"]{object-position:54% 20%}
 .company-identity{display:flex;align-items:center;gap:16px;min-width:0;margin-bottom:20px}
 .company-identity img{width:60px;height:60px;object-fit:contain;flex:none;border-radius:14px}
 .company-identity>div{min-width:0}
