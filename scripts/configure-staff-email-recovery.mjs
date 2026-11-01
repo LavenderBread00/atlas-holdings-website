@@ -6,7 +6,7 @@ const base='https://api.cloudflare.com/client/v4/accounts/a9037651b7dade97f03a1d
 async function api(path,method='GET',data){
  const res=await fetch(base+path,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
  const body=await res.json();
- if(!res.ok||body.success===false)throw Object.assign(Error(`Cloudflare ${method} ${path.split('?')[0]} failed (HTTP ${res.status}; codes ${(body.errors||[]).map(e=>e.code).join(',')||'none'}). The token needs Pages Edit and Access Apps and Policies Edit, plus Identity Providers Read.`),{status:res.status});
+ if(!res.ok||body.success===false)throw Object.assign(Error(`Cloudflare ${method} ${path.split('?')[0]} failed (HTTP ${res.status}; codes ${(body.errors||[]).map(e=>e.code).join(',')||'none'}). The token needs Pages Edit and Access Apps and Policies Edit, plus Identity Providers Edit.`),{status:res.status});
  return body.result;
 }
 const projectPath='/pages/projects/atlas-holdings-website',origin='https://atlas-holdings-website.pages.dev';
@@ -21,9 +21,10 @@ const providers=await api('/access/identity_providers');
 const apps=await api('/access/apps?per_page=100');
 const staff=apps.find(a=>a.aud===referenceEnv.ACCESS_AUD?.value);
 const pins=providers.filter(p=>p.type==='onetimepin');
-const pin=pins.find(p=>staff?.allowed_idps?.includes(p.id))||(pins.length===1?pins[0]:null);
-if(!pin)throw Error('Existing email-code provider did not verify. Available provider types: '+providers.map(p=>p.type).join(', ')+'; OTP provider count: '+pins.length+'.');
+let pin=pins.find(p=>staff?.allowed_idps?.includes(p.id))||(pins.length===1?pins[0]:null);
 const policies=await api('/access/policies?per_page=100');
+if(!pin&&pins.length===0)pin=await api('/access/identity_providers','POST',{name:'Altaş recovery email codes',type:'onetimepin',config:{}});
+if(!pin?.id||pin.type!=='onetimepin')throw Error('An unambiguous email-code provider is required.');
 const policyName='Altaş staff recovery - verified email',domain='atlas-holdings-website.pages.dev/api/staff/email-reset/*',name='Altaş staff email recovery';
 const expected={name:policyName,decision:'allow',include:[{login_method:{id:pin.id}}],require:[],exclude:[],session_duration:'1h'};
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
